@@ -34,6 +34,9 @@
 %%% EXTERNAL EXPORTS
 -export([congestion/3, connect/1, listen/1]).
 
+%%% SOCKET LISTENER FUNCTIONS EXPORTS
+-export([wait_listen/3, wait_recv/3, wait_recv/4, recv_loop/4]).
+
 %%% MACROS
 -define(CONNECT_OPTS, [binary, {packet, 0}, {active, false}]).
 -define(CONNECT_TIME, 30000).
@@ -104,6 +107,91 @@ listen(Opts) ->
                 Error ->
                     Error
             end
+    end.
+
+%%%-----------------------------------------------------------------------------
+%%% SOCKET LISTENER FUNCTIONS
+%%%-----------------------------------------------------------------------------
+handle_accept(Pid, Sock) ->
+    ok = gen_tcp:controlling_process(Sock, Pid),
+    case inet:peername(Sock) of
+        {ok, {Addr, _Port}} ->
+            gen_fsm:send_event(Pid, {accept, Sock, Addr}),
+            true;
+        {error, _Reason} ->  % Most probably the socket is closed
+            false
+    end.
+
+
+handle_input(Pid, <<CmdLen:32, Rest/binary>> = Buffer, Lapse, N, Log) ->
+    Now = now(), % PDU received.  PDU handling starts now!
+    Len = CmdLen - 4,
+    case Rest of
+        <<PduRest:Len/binary-unit:8, NextPdus/binary>> ->
+            BinPdu = <<CmdLen:32, PduRest/binary>>,
+            case catch smpp_operation:unpack(BinPdu) of
+                {ok, Pdu} ->
+                    smpp_log_mgr:pdu(Log, BinPdu),
+                    CmdId = smpp_operation:get_value(command_id, Pdu),
+                    Event = {input, CmdId, Pdu, (Lapse div N), Now},
+                    gen_fsm:send_all_state_event(Pid, Event);
+                {error, _CmdId, _Status, _SeqNum} = Event ->
+                    gen_fsm:send_all_state_event(Pid, Event);
+                {'EXIT', _What} ->
+                    Event = {error, 0, ?ESME_RUNKNOWNERR, 0},
+                    gen_fsm:send_all_state_event(Pid, Event)
+            end,
+            % The buffer may carry more than one SMPP PDU.
+            handle_input(Pid, NextPdus, Lapse, N + 1, Log);
+        _IncompletePdu ->
+            Buffer
+    end;
+handle_input(_Pid, Buffer, _Lapse, _N, _Log) ->
+    Buffer.
+
+
+wait_listen(Pid, LSock, Log) ->
+    case gen_tcp:accept(LSock) of
+        {ok, Sock} ->
+            case handle_accept(Pid, Sock) of
+                true ->
+                    wait_recv(Pid, Sock, Log);
+                false ->
+                    ?MODULE:wait_listen(Pid, LSock, Log)
+            end;
+        {error, Reason} ->
+            gen_fsm:send_all_state_event(Pid, {listen_error, Reason})
+    end.
+
+
+wait_recv(Pid, Sock, Log) ->
+    ?MODULE:wait_recv(Pid, Sock, <<>>, Log).
+
+wait_recv(Pid, Sock, Buffer, Log) ->
+    Timestamp = now(),
+    case gen_tcp:recv(Sock, 0) of
+        {ok, Input} ->
+            L = timer:now_diff(now(), Timestamp),
+            B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
+            case recv_loop(Pid, Sock, B, Log) of
+                {ok, NewBuffer} ->
+                    ?MODULE:wait_recv(Pid, Sock, NewBuffer, Log);
+                RecvError ->
+                    gen_fsm:send_all_state_event(Pid, RecvError)
+            end;
+        {error, Reason} ->
+            gen_fsm:send_all_state_event(Pid, {sock_error, Reason})
+    end.
+
+recv_loop(Pid, Sock, Buffer, Log) ->
+    case gen_tcp:recv(Sock, 0, 0) of
+        {ok, Input} ->                    % Some input waiting already
+            B = handle_input(Pid, concat_binary([Buffer, Input]), 0, 1, Log),
+            ?MODULE:recv_loop(Pid, Sock, B, Log);
+        {error, timeout} ->               % No data inmediately available
+            {ok, Buffer};
+        {error, Reason} ->
+            {sock_error, Reason}
     end.
 
 %%%-----------------------------------------------------------------------------
