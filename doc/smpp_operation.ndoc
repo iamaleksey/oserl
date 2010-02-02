@@ -1,0 +1,172 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= PARAM EXPORTS =
+
+Functions to manipulate PDU params.
+
+
+== get_value(Name, Pdu) -> Val ==
+
+== get_value(Name, Pdu, Default) -> Val ==
+
+: Types
+ : Name = atom()
+ : Pdu = pdu()
+ : Val = term()
+ : Default = term()
+
+
+Gets the value of a parameter from a PDU dictionary given the parameter name.
+If the parameter is not defined on the PDU ``Default`` is returned if defined,
+if not, the atom ``undefined`` is returned.
+
+
+== merge(Params1, Params2) -> NewParams ==
+
+: Types
+ : Params1 = [{Name, Val}]
+ : Params2 = [{Name, Val}]
+ : NewParams = [{Name, Val}]
+ : Name = atom()
+ : Val = term()
+
+
+Merge two parameter lists.  If an parameter appears on both lists, the value
+from the first list will be taken.
+
+
+== set_value(Name, Val, Pdu) -> NewPdu ==
+
+: Types
+ : Name = atom()
+ : Val = term()
+ : Pdu = pdu()
+ : NewPdu = pdu()
+
+
+Sets the value of a parameter on a PDU dictionary given the parameter name, the
+new PDU dictionary is returned.
+
+
+= PDU EXPORTS =
+
+PDU creation and conversion.
+
+
+== new(CmdId, SeqNum, InitParams) -> Pdu ==
+
+: Types
+ : CmdId = int()
+ : SeqNum = int()
+ : InitParams = [{Name, Val}]
+ : Name = atom()
+ : Val = term()
+ : Pdu = pdu()
+
+
+Creates a new PDU dictionary of type ``PdyType`` with the given ``InitParams``
+and the default values defined for this PDU.
+
+The //command_status// is set to ``ESME_ROK``.
+
+
+== new(CmdId, CmdStatus, SeqNum, InitParams) -> Pdu ==
+
+: Types
+ : CmdId = int()
+ : CmdStatus  = int()
+ : SeqNum = int()
+ : InitParams = [{Name, Val}]
+ : Name = atom()
+ : Val = term()
+ : Pdu = pdu()
+
+
+Creates a new PDU dictionary of type ``PdyType`` with the given ``InitParams``
+and the default values defined for this PDU.
+
+The //command_status// is set to ``CmdStatus``.
+
+
+== request_failure_code(CmdId) -> CmdStatus ==
+
+: Types
+ : CmdId = int()
+ : CmdStatus = int()
+
+
+Returns the error status code associated to a request failure (Most of the
+requests have a generic failure code, otherwise ``?ESME_RUNKNOWNERR`` is
+returned).
+
+
+== to_list(Pdu) -> List ==
+
+: Types
+ : Pdu = pdu()
+ : List = [{Name, Val}]
+ : Name = atom()
+ : Val = term()
+
+
+Converts the Pdu to a list representation.
+
+Notice that //command_length// won't be included on the resulting ``List``.
+
+
+= PACK/UNPACK EXPORTS =
+
+Packing and unpacking functions.
+
+== pack(Pdu) -> Result ==
+
+: Types
+ : Pdu = pdu()
+ : Result = {ok, BinPdu} | {error, CmdId, CmdStatus, SeqNum}
+ : BinPdu = bin()
+ : Error = int()
+ : CmdId = undefined | int()
+ : CmdStatus = int()
+ : SeqNum = int()
+
+
+Packs any SMPP PDU dictionary into the corresponding byte stream.  This function
+handles any operation.
+
+Before using this function consider ``pack_esme/1`` or ``pack_mc/1``.  This
+generic  packing function should only be used on special occasions
+(implementing a Routing Entity).
+
+
+== unpack(BinPdu) -> Result ==
+
+: Types
+ : BinPdu = bin()
+ : Result = {ok, Pdu} | {error, CmdId, CmdStatus, SeqNum}
+ : Pdu = pdu()
+ : CmdId = undefined | int()
+ : CmdStatus = int()
+ : SeqNum = int()
+
+Unpacks a binary SMPP PDU into the corresponding PDU dictionary.  This
+function handles any operation.
+
+Before using this function consider ``unpack_esme/1`` or ``unpack_mc/1``.  This
+generic unpacking function should only be used on very special occasions
+(such us implementing a Routing Entity).
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

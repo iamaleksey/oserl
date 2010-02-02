@@ -1,0 +1,38 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodrigu
+ez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+= DESCRIPTION =
+
+Standard SMPP Error descriptions.
+
+
+= EXTERNAL EXPORTS =
+
+Error formatting functions.
+
+
+== format(CmdStatus) -> Desc ==
+
+: Types
+ : CmdStatus = int()
+ : Desc = string()
+
+
+Given the ``CmdStatus`` returned by any SMPP operation, this function returns a
+descriptive string of the error in English (as described in the SMPP
+specification V5.0).
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

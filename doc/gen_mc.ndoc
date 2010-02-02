@@ -1,0 +1,756 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= BEHAVIOUR =
+
+This module implements the ``gen_server`` and ``gen_esme_session`` behaviours.
+
+
+= DESCRIPTION =
+
+The ``gen_mc`` behaviour acts as an extended ``gen_server``, homonymous
+functions have the exact same meaning.
+
+The MC keeps track of a list of SMPP sessions.
+
+On start time no SMPP session is initiated and the MC starts listening for
+incoming connections on the given port.
+
+The MC starts a log manager, see **smpp_log_mgr(3)**, but no log handlers are
+installed by default.  The function ``add_log_handler/3`` can be used to
+install log handlers.   Two sample log handlers are included in oserl,
+**smpp_disk_log_hlr(3)** and **smpp_tty_log_hlr(3)**.
+
+This behaviour implements a simple MC that may not suite all needs, if
+something more complex is required, it is recommended to implement the MC
+using the ``gen_mc_session`` behaviour directly.
+
+Please refer to **test/test_mc.erl** for a minimal MC example.
+
+
+= START/STOP EXPORTS =
+
+Exported functions.
+
+
+== start(Module, Args, Opts) -> Result ==
+== start(SrvName, Module, Args, Opts) -> Result ==
+
+== start_link(Module, Args, Opts) -> Result ==
+== start_link(SrvName, Module, Args, Opts) -> Result ==
+
+: Types
+ : SrvName = {local, Name} | {global, Name}
+ : Name = atom()
+ : Module = atom()
+ : Opts = [Opt]
+ : Opt = {debug, Dbgs} |
+         {timeout, Time}  |
+         {spawn_opt, SOpts} |
+         {addr, Addr} |
+         {port, Port} |
+         {timers, Timers}
+ : Dbgs = [Dbg]
+ : Dbg = trace |
+         log |
+         statistics |
+         {log_to_file, FileName} |
+         {install, {Func, FuncSt}}
+ : Time = int()
+ : SOpts = [term()]
+ : Addr = ip_address()
+ : Port = int()
+ : Timers = timers_smpp()
+ : Result = {ok, Pid} | ignore | {error, Error}
+ : Pid = pid()
+ : Error = {already_started, Pid} | term()
+
+
+Starts the MC server.
+
+``SrvName``, ``Module``, ``Args`` and ``debug``, ``timeout`` and
+``spawn_opt`` ``Opts`` have the exact same meaning as in ``gen_server``
+behavior MC options are the following:
+
+- addr: IP address of the listening interface, if undefined the default
+  address will be determined as follows:
+
+```
+default_addr() ->
+    {ok, Host} = inet:gethostname(),
+    {ok, Addr} = inet:getaddr(Host, inet),
+    Addr.
+```
+
+- port: is the SMPP port where the MC listens at.  If not defined the default
+  2775 is used.
+
+- timers: SMPP ``timers_smpp`` for the sessions.  If not defined default timers
+  are used.
+
+
+= SERVER EXPORTS =
+
+Exported functions.
+
+
+== call(SrvRef, Req) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Reply = term()
+
+
+Equivalent to gen_server:call/2.
+
+
+== call(SrvRef, Req, Timeout) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Timeout = int() | infinity
+ : Reply = term()
+
+
+Equivalent to gen_server:call/3.
+
+
+== cast(SrvRef, Req) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Reply = term()
+
+
+Equivalent to gen_server:cast/2.
+
+
+== reply(Client, Reply) -> true ==
+
+: Types
+ : Client = term()
+ : Reply  = term()
+
+
+Equivalent to gen_server:reply/2.
+
+
+= CONNECT EXPORTS =
+
+Functions to handle connections on the SMPP sessions.
+
+
+== close(SrvRef, Session) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+
+
+Asychronous call to closes the SMPP session identified by ``Session``.  Note
+that the session is terminated regardless of its current state.  See
+``handle_closed/3``.
+
+
+= SMPP EXPORTS =
+
+SMPP operations.
+
+
+== alert_notification(SrvRef, Session, Params) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+
+
+Issues an //alert_notification// operation on the session identified by
+``Session``.  This function always returns ``ok``.
+
+
+== data_sm(SrvRef, Session, Params, Args) -> ok ==
+== data_sm(SrvRef, Session, Params, Args, Timeout) -> ok ==
+
+== deliver_sm(SrvRef, Session, Params, Args) -> ok ==
+== deliver_sm(SrvRef, Session, Params, Args, Timeout) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Timeout = int()
+
+
+Issues an asynchronous //data_sm// and //deliver_sm// operation on the session
+identified by ``Session``.
+
+The function returns ``ok`` and the SMPP request is issued immediately.  The
+request does not go through the ESME queue and is not controlled by the throttle
+controller.  Right after sending the request to the other peer, the callback
+``handle_req/5`` is called to notify the reference of the request to the
+callback module.  This reference is later passed as the second argument to
+``handle_resp/4`` when the response arrives.
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/5``.  The
+default ``Timeout`` is 2 minutes (TCP SYN_SENT).
+
+
+== outbind(SrvRef, Addr, Opts, Params) -> Result ==
+== outbind(SrvRef, Addr, Opts, Params, Timeout) -> Result ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Addr = ip_address()
+ : Opts = [Opt]
+ : Opt = {port, Port} |
+         {timers, Timers} |
+         {rps, Rps} |
+         {file_queue, File}
+ : Port = int()
+ : Timers = timers_smpp()
+ : Throttle = int()
+ : File = string()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Result = {ok, Session} | {error, Reason}
+ : Session = pid()
+ : Reason = term()
+
+
+Opens a session to ``Addr`` and ``Port`` and sends and //outbind//
+request once the connection is established.  This function returns the
+pid of the newly created session or an error if the connection could
+not be established.
+
+If the other peer later attempts to bind, a call to ``handle_bind_receiver/4``,
+``handle_bind_transceiver/4`` or ``handle_bind_transmitter/4``  will
+be received.  If the connection is later dropped, a call to ``handle_closed/3``
+is received.
+
+``Opts`` is a list of options with the following meaning:
+
+- port: SMPP port.  If not defined 2775 is used.
+
+- timers: SMPP ``timers_smpp`` for the session.  If not defined default timers
+  are used.
+
+- rps: Max number of SMPP requests per second.  If not defined, the
+  default value is 1000.
+
+- file_queue: Filename where the queue is stored.  If not defined memory queues
+  will be used instead.  Persistent disk queues are preserved across failures.
+
+
+The default ``Timeout`` is 2 minutes (TCP SYN_SENT).
+
+
+== unbind(SrvRef, Session, Args) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Args = term()
+
+
+Issues an unbind operation on the session identified by ``Session``.
+
+The function returns ``ok`` and the unbind request is issued immediately.  The
+request does not go through the ESME queue and is not controlled by the throttle
+controller.  Right after sending the request to the other peer, the callback
+``handle_req/5`` is called to notify the reference of the request to the
+callback module.  This reference is later passed as the second argument to
+``handle_resp/4`` when the response arrives.
+
+
+= QUEUE EXPORTS =
+
+Exported functions using the requests queue.
+
+== queue_data_sm(SrvRef, Session, Params, Args) -> ok ==
+== queue_data_sm(SrvRef, Session, Params, Args, Priority) -> ok ==
+
+== queue_deliver_sm(SrvRef, Session, Params, Args) -> ok ==
+== queue_deliver_sm(SrvRef, Session, Params, Args, Priority) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Priority = int()
+
+
+Queues an asynchronous //data_sm// and //deliver_sm// operation on the session
+identified by ``Session``.
+
+The function returns ``ok`` and the SMPP request is inserted into the session
+queue.  Once the request is sent to the other peer, the callback
+``handle_req/5`` is called to notify the reference of the request to the
+callback module.  This reference is later passed as the second argument to
+``handle_resp/4`` when the response arrives.
+
+If unspecified ``Priority`` is ``10``.  ``0`` is the highest priority.  Requests
+with higher priority are processed first.
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/5``.
+
+
+== queue_len(SrvRef, Session) -> Len ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Name = atom()
+ : Node = atom()
+ : Len = int()
+
+
+Returns the length of the queue (number of queued requests) for the session
+identified by ``Session``.
+
+
+== queue_out(SrvRef, Session) -> Reqs ==
+== queue_out(SrvRef, Session, Num) -> Reqs ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Name = atom()
+ : Node = atom()
+ : Num = int()
+ : Reqs = [Req]
+ : Req = {CmdName, Params}
+ : CmdName = data_sm | deliver_sm
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+
+
+Removes ``Num`` requests from the queue of the session identified by
+``Session``.  Returns  the  list of requests removed.  If there are no enough
+requests on the queue, ``Reqs`` may contain less elements than ``Num``.  If the
+queue is empty an empty list is returned.
+
+If ``Num`` is not specified, 1 request will be removed.
+
+Notice that the returned requests will be removed from the queue and not
+processed.
+
+
+
+= LOG EXPORTS =
+
+Log related exports.   Please refer to **smpp_log_mgr(3)** for greater details.
+
+
+== add_log_handler(SrvRef, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see smpp_log_mgr:add_handler/3
+
+
+Adds a new log handler to the ESME log manager.  The event handler must be
+implemented as a gen_event callback  module, see **smpp_log_mgr(3)**.
+
+``SrvRef`` is the name or the process id of the ESME.
+
+
+== delete_log_handler(SrvRef, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see smpp_log_mgr:delete_handler/3
+
+
+Deletes a log handler from the ESME log manager, see **smpp_log_mgr(3)**.
+
+
+== swap_log_handler(SrvRef, {Handler1, Args}, {Handler2, Args}) -> Result ==
+
+: Types
+ : Handler1, Args1, Handler2, Args2, Result -- see smpp_log_mgr:swap_handler/3
+
+
+Replaces an old log handler with a new log handler in the ESME log manager.  The
+configuration from the old handler is passed to the second handler and used
+as default if not defined.
+
+
+= RPS EXPORTS =
+
+RPS (Requests Per Second) exports.
+
+
+== pause(SrvRef, Session) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+
+
+Pauses processing queued messages for session ``Session``.  Requests in the
+queue are kept until ``resume/1`` is called.  Requests sent using
+``alert_notification/3``, ``data_sm/4``, ``deliver_sm/4``,
+``outbind/4`` and ``unbind/2`` are not affected.
+
+
+== resume(SrvRef, Session) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+
+
+Resumes processing queued messages at the configured rate (see ``rps_max/1``)
+for session ``Session``.
+
+
+== rps(SrvRef, Session) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Rps = int()
+
+
+Returns the calculated Requests Per Second.  It may be different than the
+configured maximum RPS returned by ``rps_max``.  Notice that requests sent
+using  ``alert_notification/3``, ``data_sm/4``, ``deliver_sm/4``, ``outbind/4``
+and ``unbind/2`` are not counted.
+
+
+== rps_avg(SrvRef, Session) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Rps = int()
+
+
+Returns the calculated average Requests Per Second.  It may be different than
+the configured maximum RPS returned by ``rps_max``.  Notice that requests sent
+using  ``alert_notification/3``, ``data_sm/4``, ``deliver_sm/4``, ``outbind/4``
+and ``unbind/2`` are not counted.
+
+
+== rps_max(SrvRef, Session) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Rps = int()
+
+
+Returns the current configured value for the maximun number of requests per
+second for session ``Session``.
+
+
+== rps_max(SrvRef, Session, Rps) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Session = pid()
+ : Rps = int()
+
+
+Sets the max number of requests per second to ``Rps`` for session ``Session``.
+
+
+= CALLBACK EXPORTS =
+
+A module implementing this behaviour must export these functions.  Leaving a
+callback undefined crashes the entire ESME whenever that particular function is
+called.
+
+
+== init(Args) -> Result ==
+
+: Types
+ : Args = term()
+
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== terminate(Reason, St) -> ok ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_call(Req, From, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_cast(Req, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_info(Info, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on this
+callback.
+
+
+== code_change(OldVsn, St, Extra) -> {ok, NewSt} ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on this
+callback.
+
+
+== handle_accept(Session, Addr, From, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Addr = ip_address()
+ : From = term()
+ : St = term()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = {ok, Opts} | {error, RejectReason}
+ : Opts = [Opt]
+ : Opt = {rps, Rps} | {file_queue, File}
+ : RejectReason = term()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+Notifies that a session with pid ``Session`` from  ``Addr`` has
+been accepted.  This callback must return ``ok`` to keep the session open
+and wait for a bind request, or ``{error, RejectReason}`` to drop the connection
+and terminate the session with ``RejectReason``.
+
+``Opts`` is a list of options with the following meaning:
+
+- rps: Max number of SMPP requests per second.  If not defined, the
+  default value is 1000.
+
+- file_queue: Filename where the queue is stored.  If not defined memory queues
+  will be used instead.  Persistent disk queues are preserved across failures.
+
+
+== handle_bind_receiver(Session, Pdu, From, St) -> Result ==
+
+== handle_bind_transceiver(Session, Pdu, From, St) -> Result ==
+
+== handle_bind_transmitter(Session, Pdu, From, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Pdu = pdu()
+ : St = term()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = {ok, Params} | {error, CmdStatus}
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : CmdStatus = int()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+This function is called when the session identified by ``Session`` receives a
+//bind_receiver//, //bind_transceiver// or //bind_transmitter// request from
+the other peer.  Return ``{ok, Params}`` to accept the bind request and
+move the session to the corresponding bound state.  If the tuple
+``{error, CmdStatus}`` is returned, the session bind request is rejected
+with ``CmdStatus`` and the session dropped.
+
+
+== handle_broadcast_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_cancel_broadcast_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_cancel_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_data_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_query_broadcast_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_query_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_replace_sm(Session, Pdu, From, St) -> Result ==
+
+== handle_submit_multi(Session, Pdu, From, St) -> Result ==
+
+== handle_submit_sm(Session, Pdu, From, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Pdu = pdu()
+ : From = term()
+ : St = term()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = {ok, Params} | {error, CmdStatus}
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : CmdStatus = int()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+ : CmdStatus = int()
+
+
+Forwards //broadcast_sm//, //cancel_broadcast_sm//, //cancel_sm//  //data_sm//,
+//query_broadcast_sm//, //query_sm//, //replace_sm//,  //submit_multi// and
+//submit_sm// operations received by ``Session`` to the callback MC.
+
+The ``Params`` included in the response are used to construct the response
+PDU.  If ``{error, CmdStatus}`` is returned, an error response PDU
+with ``CmdStatus`` command_status will be sent back to the other peer.
+
+In case of error, the ``Params`` are likely to be ignored by the other peer.
+
+
+== handle_closed(Session, Reason, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Reason = term()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+This function is called when ``Session`` is closed.
+
+If ``{noreply, NewSt}`` or ``{noreply, NewSt, Timeout}`` is returned the MC
+continues running.  If this function returns ``{stop, Reason, NewSt}`` the
+entire MC will exit with ``Reason``.  This function is always called when
+a session terminates, this also applies if the session is closed by
+the function ``close/2``.
+
+
+== handle_req(Session, Req, Args, Ref, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Req = unbind | {CmdName, Params}
+ : CmdName = broadcast_sm |
+             cancel_broadcast_sm |
+             cancel_sm |
+             data_sm |
+             query_broadcast_sm |
+             query_sm |
+             replace_sm |
+             submit_multi |
+             submit_sm
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Ref = ref()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : NewSt = term()
+ : Timeout = int()
+ : Reason = term()
+
+
+This callback is called when the request ``Req`` is submitted to the other
+peer.  ``Session`` is the session identifier and ``Ref`` is the reference of
+the request that can be later used to match the response arriving in
+``handle_resp/4``.
+
+
+== handle_resp(Session, Resp, Ref, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Resp = {ok, PduResp} | {error, Error}
+ : PduResp = pdu()
+ : Error = int()
+ : Ref = ref()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : NewSt = term()
+ : Timeout = int()
+ : Reason = term()
+
+
+This callback is called when the response ``Resp`` associated to the request
+with reference ``Ref`` arrives.
+
+
+== handle_unbind(Session, Pdu, From, St) -> Result ==
+
+: Types
+ : Session = pid()
+ : Pdu = pdu()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = ok | {error, CmdStatus}
+ : Error = int()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+ : CmdStatus = int()
+
+
+This callback forwards an //unbind// request received on ``Session`` to the
+callback module.
+
+If the atom ``ok`` is returned an unbind_resp with a ESME_ROK command_status is
+sent to the peer and the session moves to unbound state.  Return
+``{error, CmdStatus}`` to send an erroneous PDU back to the peer and remain
+in the current bound state.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

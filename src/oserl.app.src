@@ -1,0 +1,7 @@
+{application, %APPLICATION%,
+ [{description, "Open SMPP Erlang Library"},
+  {vsn, "%VSN%"},
+  {modules, [%MODULES%]},
+  {registered, []},
+  {applications, [kernel, stdlib, common_lib]},
+  {env, []}]}.

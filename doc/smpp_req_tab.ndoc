@@ -1,0 +1,81 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DESCRIPTION =
+
+A request table is a memory table (based on ETS) used for memory storage of the
+SMPP requests in the ESME and MC sessions.
+
+
+= TABLE EXPORTS =
+
+Functions to create a req tables.
+
+
+== new() -> ReqTab ==
+
+: Types
+ : ReqTab = req_tab()
+
+
+Creates an empty ``ReqTab`` table.
+
+
+= READ/WRITE EXPORTS =
+
+Functions to read/write SMPP requests from/to a request table.
+
+
+== match(ReqTab, Opts) -> Reqs ==
+
+: Types
+ : ReqTab = req_tab()
+ : Opts = [Opt]
+ : Opt = {Name, Val}
+ : Name = sequence_number | command_id | response_timer | from | ref
+ : Val = term()
+ : Reqs = [Req]
+ : Req = request()
+
+
+Reads from the table ``ReqTab`` all the requests matching the given options.
+Returned requests are removed from the table.
+
+
+== read(ReqTab, SeqNum) -> Result ==
+
+: Types
+ : ReqTab = req_tab()
+ : SeqNum = int()
+ : Result = {ok, Req} | {error, not_found}
+ : Req = request()
+
+
+Reads the request ``Req`` with the ``sequence_number`` ``SeqNum from the table
+``ReqTab``.  If found ``Req`` is returned and removed from the table.
+
+
+== write(ReqTab, Req) -> ok ==
+
+: Types
+ : ReqTab = req_tab()
+ : Req = request()
+
+
+Writes a SMPP request ``Req`` into the ``ReqTab`` table.
+
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

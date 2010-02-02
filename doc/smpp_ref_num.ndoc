@@ -1,0 +1,38 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote Peña enrique.marcote@nomasystems.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DESCRIPTION =
+
+Reference number generator for SM fragmentation.
+
+
+= EXPORTS =
+
+Exported functions.
+
+
+== next(Key) -> Val ==
+
+: Types
+ : Key = term()
+ : Val = 1..255
+
+
+Returns the next value for the reference number counter associatted to ``Key``.
+``Key`` will typically be the name or pid of the esme.  Reference numbers
+wrap at 255.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

@@ -1,0 +1,292 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DESCRIPTION =
+
+Functions to create composite values.  The types returned by this module are
+defined in **smpp_globals.hrl**.
+
+
+= STANDARD VALUES EXPORTS =
+
+Exported functions for creating standard composite values.
+
+
+== dest_address_sme(DestFlag, DestAddrTon, DestAddrNpi, DestAddr) -> Value ==
+
+: Types
+ : DestFlag = int()
+ : DestAddrTon = int()
+ : DestAddrNpi = int()
+ : DestinationAddr = string()
+ : Value = dest_address_sme()
+
+
+Returns a doc ``dest_address_sme`` composite value.
+
+- DestFlag: Identifies the kind of address, 0x01 for SME address (1 octet).
+
+- DestAddrTon: Indicates Type of Number for destination (1 octet).
+
+- DestAddrNpi: Numbering Plan Indicator for destination (1 octet).
+
+- DestinationAddr: Destination address of this short message.  For mobile
+  terminated messages, this is the directory number of the recipient MS
+  (Var. max 21 octets).
+
+
+== dest_address_dl(DestFlag, DlName) -> Value ==
+
+: Types
+ : DestFlag = int()
+ : DlName = string()
+ : Value = dest_address_dl()
+
+
+Returns a ``dest_address_dl`` composite value.
+
+- DestFlag: Identifies the kind of address, 0x02 for Distribution List
+  (1 octet).
+
+- DlName: Name of the Distribution List (Var. max 21 octets).
+
+
+== unsuccess_sme(DestAddrTon, DestAddrNpi, DestAddr, StatusCode) -> Value ==
+
+: Types
+ : DestAddrTon = int()
+ : DestAddrNpi = int()
+ : DestAddr = string()
+ : StatusCode = int()
+ : Value = unsuccess_sme()
+
+
+Returns a ``unsuccess_sme`` composite value.
+
+- DestAddrTon: Indicates Type of Number for destination (1 octet).
+
+- DestAddrNpi: Numbering Plan Indicator for destination (1 octet).
+
+- DestinationAddr: Destination address of this short message.  For mobile
+  terminated messages, this is the directory number of the recipient MS.
+  (Var. max 21 octets).
+
+- ErrorStatusCode: Indicates the success or failure of the //submit_multi//
+  request to this SME address.  Check ``command_status`` macros for a complete
+  list of SMPP Error codes (4 octets).
+
+
+= TLV VALUES EXPORTS =
+
+Exported functions for TLV values.
+
+== broadcast_area(Format, Details) -> Value ==
+
+: Types
+ : Format = int()
+ : Details = string()
+ : Value = broadcast_area()
+
+
+Returns a ``broadcast_area`` TLV value.
+
+- Format: Used to specify the area format (1 octet).
+
+- Details: Used to specify the broadcast area details  (Var. max 100 octets).
+
+
+== broadcast_content_type(NetworkType, Service) -> Value ==
+
+: Types
+ : NetworkType = int()
+ : Service = int()
+ : Value = broadcast_content_type()
+
+
+Returns a ``broadcast_content_type`` TLV value.
+
+- NetworkType: Tag indicating the network type (1 octet).
+
+- Service: Broadcast service type (2 octets).
+
+
+== broadcast_frequency_interval(TimeUnit, Number) -> Value ==
+
+: Types
+ : TimeUnit = int()
+ : Number = int()
+ : Value = broadcast_frequency_interval()
+
+
+Returns a ``broadcast_frequency_interval`` TLV value.
+
+- TimeUnit: Specifies the Units of Time (1 octet).
+
+- Number: Number of the specified time units (2 octets).
+
+
+== subaddress(Tag, Data) -> Value ==
+
+: Types
+ : Tag = int()
+ : Data = string()
+ : Value = subaddress()
+
+
+Returns a ``dest_subaddress`` or ``source_subaddress`` TLV value.
+
+- Tag: Indicates the type of sub-addressing information included in Data, and
+  implies the type and length of sub-addressing information which can accompany
+  this tag value in the Data field (1 octet).
+
+- Data: Contain the subaddress (Var. max 22 octets).
+
+
+== callback_num(DigitModeIndicator, AddrTon, AddrNpi, NumberDigits) -> Value ==
+
+: Types
+ : DigitModeIndicator = int()
+ : AddrTon = int()
+ : AddrNpi = int()
+ : NumberDigits = string()
+ : Value = callback_num()
+
+
+Returns a ``callback_num`` TLV value.
+
+- DigitModeIndicator: Indicates that the Call Back Number is sent to the mobile
+  as DTMF digits encoded in TBCC (Value = 0) or as ASCII digits (Value 1).
+  (1 octet).
+
+- AddrTon: Indicates Type of Number for destination (1 octet).
+
+- AddrNpi: Numbering Plan Indicator for destination (1 octet).
+
+- NumberDigits: The Call Back Number Digits (Var. max 16 octets).
+
+
+== callback_num_atag(DataCoding, DisplayCharacters) -> Value ==
+
+: Types
+ : DataCoding = int()
+ : DisplayCharacters = string()
+ : Value = callback_num_atag()
+
+
+Returns a ``callback_num_atag`` TLV value.
+
+- DataCoding: Defines the encoding scheme of the Alpha Tag display characters
+  (1 octet).
+
+- DisplayCharacters: The Alpha Tag display Characters (Var. max 64 octets).
+
+
+== telematics_id(ProtocolId, Reserved) -> Value ==
+
+: Types
+ : ProtocolId = int()
+ : Reserved = int()
+ : Value = telematics_id()
+
+
+Returns a ``dest_telematics_id`` or ``source_telematics_id`` TLV value.
+
+- ProtocolId: Protocol Identifier.  Network specific field (1 octet).
+
+- Reserved: Reserved. Integer (1 octet).
+
+
+== its_session_info(SessionNumber, SequenceNumber) -> Value ==
+
+: Types
+ : SessionNumber = int()
+ : SequenceNumber = int()
+ : Value = its_session_info()
+
+
+Returns a ``its_session_info`` TLV value.
+
+- SessionNumber: Remains constant for each session (1 octet).
+
+- SequenceNumber: Sequence number of the dialogue unit (as assigned bye the
+  ESME) within the session is encoded in bits 7..1. The End of Session Indicator
+  indicates the message is the end of the conversation session and is encoded
+  in bit 0 as follows:
+
+ - 0 = End of Session Indicator Inactive.
+ - 1 = End of Session Indicator Active.
+
+ While the end of session is inactive the SequenceNumber is an even number and
+ is increased by 2.  The Session Indicator becomes active it should be
+ incremented by 1, (an odd number).  1 octet.
+
+
+== ms_validity_absolute(Behaviour) -> Value ==
+
+: Types
+ : Behaviour = int()
+ : Value = ms_validity_absolute()
+
+
+Returns a ``ms_validity_absolute`` TLV value.
+
+- Behaviour: Validity behaviour (1 octet).
+
+
+== ms_validity_relative(Behaviour, TimeUnit, Number) -> Value ==
+
+: Types
+ : Behaviour = int()
+ : TimeUnit = int()
+ : Number = int()
+ : Value = ms_validity_relative()
+
+
+Returns a ``ms_validity_relative`` TLV value.
+
+- Behaviour: Validity behaviour (1 octet).
+
+- TimeUnit: Specifies the Units of Time (1 octet).
+
+- Number: The number of the specified time units (2 octets).
+
+
+== network_error_code(Type, Error) -> Value ==
+
+: Types
+ : Type = int()
+ : Error = int()
+ : Value = network_error_code()
+
+
+Returns a ``network_error_code`` TLV value.
+
+- Type: Network type.  Integer (1 octet).
+
+- Error: Specify the actual network error code approproate to the network type
+  (2 octets).
+
+
+= REFERENCES =
+
+: [SMPP 5.0]
+  Short Message Peer-to-Peer Protocol Specification. Version 5.0. SMS Forum.
+
+: [3GPP TS 23.040]
+  Technical Realization of the Short Message Service (SMS) Release 4.
+  Version 5.0.0. [3GPP http://www.3gpp.org].
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

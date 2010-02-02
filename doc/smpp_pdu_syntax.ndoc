@@ -1,0 +1,224 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DATATYPES =
+
+The following data-types are meta-types used to specify the SMPP PDU
+types.  These meta-types are used to pack and unpack PDUs and check that
+they match the specification.
+
+
+== {pdu, CmdId, StdsTypes, TlvsTypes} ==
+
+: Types
+ : CmdId = int()
+ : StdsTypes = [standard()]
+ : TlvsTypes = [tlv()]
+
+
+PDU definitions.
+
+``CmdId`` is the //command_id//.  ``StdsTypes`` contains a list with the
+types of the standard parameters.  There is one descriptor per standard
+parameter in the PDU.  This list must have the same exact order than the one
+defined on the SMPP protocol specification.
+
+``TlvsTypes`` is a list with the types of every permitted TLV of the PDU.  The
+SMPP protocol specification does not establish any kind of ordering for the TLV
+parameters.  The order on this list is only relevant from an efficiency point
+of view, and it'll be more optimal to define the list in the same order the
+parameters arrive.
+
+
+= DESCRIPTION =
+
+The PDU syntax definitiond extends the param syntax and gives support for PDU
+defintions.
+
+Every PDU declaration consists of two lists.
+
+
+- Command Id: SMPP ``command_id``.
+
+- Standard body parameters declaration: A list with the
+  declaration of every standard parameter of the PDU body.  Header
+  parameters are **not** included on the PDU declaration.  The standard
+  parameters are packed/unpacked in the order specified on this list,
+  thus the order must be the one declared on [SMPP 5.0].
+
+- TLV parameters declaration: A list with the declaration
+  of every TLV parameter of the PDU.
+
+  Programmers may want to comment out, uncomment or even add any
+  desired TLV in order to fit the needs of a particular implementation.
+  Notice that having declared unused TLVs doesn't do any harm, comment
+  them out or remove'em from the TLV list on the PDU declaration only for
+  efficiency sake.
+
+
+Given the following declaration:
+
+```
+-define(BIND_TRANSMITTER_RESP,
+        ?PDU(?COMMAND_ID_BIND_TRANSMITTER_RESP,
+             [?SYSTEM_ID],
+             [?CONGESTION_STATE,
+              ?SC_INTERFACE_VERSION])).
+```
+
+An erlang value representing this PDU must have the elements:
+
+```
+[{command_id, ?COMMAND_ID_BIND_TRANSMITTER_RESP},
+ {command_status, CommandStatus},
+ {sequence_number, SequenceNumber},
+ {system_id, SystemId}]
+```
+
+The pair ``{system_id, SystemId}`` might be ignored if
+``command_status`` is not 0, the following pairs are also optional:
+
+```
+[{congestion_state, CongestionState},
+ {sc_interface_version, ScInterfaceVersion}]
+```
+
+Notice that a ``command_length`` element is not included.
+
+
+= HEADER EXPORTS =
+
+== command_id(Pdu) -> int() ==
+
+: Types
+ : Pdu = bin() | pdu_val()
+
+
+Gets the ``command_id`` of a PDU (binary or term).
+
+If the PDU is malformed and the ``command_id`` can not be found, the function
+crashes.
+
+
+== command_status(Pdu) -> int() ==
+
+: Types
+ : Pdu = bin() | pdu_val()
+
+
+Gets the ``command_status`` of a PDU (binary or term).
+
+If the PDU is malformed and the ``command_status`` can not be found, the
+function crashes.
+
+
+== sequence_number(Pdu) -> int() ==
+
+: Types
+ : Pdu = bin() | pdu_val()
+
+
+Gets the ``sequence_number`` of a PDU (binary or term).
+
+If the PDU is malformed and the ``sequence_number`` can not be found, the
+function crashes.
+
+
+= PDU EXPORTS =
+
+
+== new_pdu(CmdId, CmdStatus, SeqNum, Body) -> Pdu ==
+
+: Types
+ : CmdId = int()
+ : CmdStatus = int()
+ : SeqNum = int()
+ : Body = [{Key, Value}]
+ : Pdu = pdu_val()
+
+
+Creates a new ``Pdu`` value for a given the ``CmdId``, ``CmdStatus``,
+``SeqNum`` and a list of initial body values.  Every pair of the
+``Body`` list must be on the form ``{Key, Value}``.
+
+The ``Body`` parameter list is ignored whenever ``CmdStatus`` is different
+from ``0``.
+
+
+== pack(Pdu, Type) -> Result ==
+
+: Types
+ : Pdu = pdu_val()
+ : Type = pdu()
+ : Result = {ok, BinPdu} | {error, CmdId, CmdStatus, SeqNum}
+ : BinPdu = bin()
+ : CmdId = int()
+ : CmdStatus = int()
+ : SeqNum = int()
+
+
+Packs an SMPP ``Pdu`` value into the corresponding byte stream given the PDU
+``Type``.
+
+This function generates an exception if the parameters ``command_id``,
+``command_status`` or ``sequence_number`` are not present on the ``Pdu`` value.
+
+Possible return values are:
+
+- ``{error, Other, ?ESME_RINVCMDID, SeqNum}`` if the ``command_id`` on
+the ``Pdu`` value ``Other`` and doesn't match the ``command_id`` given in the
+``Type`` specifier.
+
+- ``{error, CmdId, CmdStatus, SeqNum}`` where ``CmdStatus`` is
+``?ESME_RUNKNOWNERR`` or the error code associated to the parameter that caused
+the failure.  The ``command_id`` matches the id given in the ``Type``  but a
+packing error was encountered.
+
+- ``{ok, BinPdu}`` if the PDU was successfully packed.
+
+
+== unpack(BinPdu, Type) -> Result ==
+
+: Types
+ : BinPdu = bin()
+ : Type = pdu()
+ : Result = {ok, Pdu} | {error, CmdId, CmdStatus, SeqNum}
+ : Pdu = pdu_val()
+ : Error = int()
+ : CmdId = undefined | int()
+ : CmdStatus = int()
+ : SeqNum = int()
+
+
+Unpacks an SMPP binary PDU (octet stream) into the corresponding PDU value
+according to ``Type``.
+
+This function returns:
+
+- ``{error, CmdId, ?ESME_RINVCMDID, SeqNum}`` if the ``command_id``
+on the ``BinPdu`` doesn't match the ``command_id`` given on ``Type``.
+
+- ``{error, CmdId, ?ESME_RINVCMDLEN, SeqNum}`` if the PDU is
+malformed.  The ``CmdId`` might be the atom ``undefined`` and the
+``SeqNum`` 0 if the ``BinPdu`` is completly unparseable.
+
+- ``{error, CmdId, CmdStatus, SeqNum}`` where ``CmdStatus`` is
+``?ESME_RUNKNOWNERR`` or the error code associated to the parameter that caused
+the failure.
+
+- ``{ok, Pdu}`` if the PDU was successfully unpacked.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

@@ -1,0 +1,203 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DATATYPES =
+
+The following data-types are meta-types used to specify the SMPP parameters.
+These meta-types are used to encode and decode PDU parameters.
+
+== {standard, Name, Domain, Default, Error} ==
+
+: Types
+ : Name = atom()
+ : Domain = Type
+ : Default = term()
+ : Type = constant() |
+          integer() |
+          c_octet_string() |
+          octet_string() |
+          list() |
+          composite() |
+          union()
+ : Error = int()
+
+
+Standard Parameter declaration.
+
+``Name`` is the name of the parameter.  ``Domain`` the parameter domain, defined
+in terms of the base syntax, see **base_syntax(3)**.  ``Default`` is the default
+value for the parameter.  Used by the encoding functions whenever the parameter
+is left undefined and ``Error`` the error code associated to the parameter.
+
+
+== {tlv, Name, Tag, Domain, Reserved, Mandatory, Multiple, Default, Err} ==
+
+: Types
+ : Name = atom()
+ : Tag = int()
+ : Domain = Type
+ : Type = constant() |
+          integer() |
+          c_octet_string() |
+          octet_string() |
+          list() |
+          composite() |
+          union()
+ : Reserved = Type
+ : Mandatory = bool()
+ : Multiple = bool()
+ : Default = term()
+ : Err = int()
+
+
+Tagged Length Value Parameter declaration.
+
+``Name`` is the name of the parameter. ``Tag`` the identifier of the TLV.
+``Domain`` the domain of the parameter, defined in terms of the base syntax,
+see **base_syntax(3)**. ``Reserved`` is a set of reserved values for the
+parameter.  Defined in terms of the base syntax.  ``Mandatory`` is a boolean
+indicating if the TLV is mandatory. ``Multiple`` is a boolean indicating if
+the TLV can be encoded multiple times. ``Default`` is the default value for
+the parameter.  If the encoding (or decoding) operation fails the default value
+will be used (if provided). ``Err`` is the error code associated to the
+parameter.
+
+
+
+= DESCRIPTION =
+
+Standard and TLV parameter syntax definition.  This syntax complements
+the base syntax defined in the file **base_syntax(3)**, giving
+to the parameter definitions the possibility to specify an associated error
+code, a default value and a tag (on TLVs only).
+
+A complete list of the SMPP parameters specification is defined in
+**smpp_param.hrl**.
+
+Even this syntax is considered implementation-specific, the definitions
+herein included try to reflect the conventions used on [SMPP 5.0].
+
+The best way to understand the meaning of the data-types defined on this
+header file and how everything works, is by a complete example.
+
+On page 72, section 4.2.3.1 of the SMPP specification [SMPP 5.0], the
+following fields are defined as part of the //submit_multi</i> operation
+
+=== Fragment of Table 4-18 submit_multi PDU ===
+
+| Field Name         | Size Octets |       Type     |
+| number_of_dests    |      1      |     Integer    |
+| dest_address       | Var. max 24 |    Composite   |
+| - dest_flag        |      1      |     Integer    |
+| - dest_addr_ton    |      1      |     Integer    |
+| - dest_addr_npi    |      1      |     Integer    |
+| - destination_addr | Var. max 21 | C-Octet String |
+| dest_address       | Var. max 23 |    Composite   |
+| - dest_flag        |      1      |     Integer    |
+| - dl_name          | Var. max 21 | C-Octet String |
+
+Assuming we already have the base types defined as described on file
+**base_syntax(3)**, the parameter dest_address is translated into param syntax
+notation as follows:
+
+```
+-define(DEST_ADDRESS,
+        ?STANDARD(dest_address,
+                  ?DEST_ADDRESS_DOMAIN,
+                  undefined,
+                  ?ESME_RINVDSTADR)).
+```
+
+Notice that ``DEST_ADDRESS`` embraces the definition of both fields;
+``number_of_dests`` and ``dest_address``, since a the base type is a list and
+this type is encoded in a ``Length ++ List`` fashion, thus ``number_of_dests``
+does not need to be explicitly declared.
+
+The ``broadcast_area_success`` (page 139, section 4.8.4.5 on
+[SMPP 5.0]) is a sample of a mandatory TLV, ``broadcast_content_type_info`` is
+an optional TLV.  The param syntax representation is:
+
+```
+-define(BROADCAST_AREA_SUCCESS,
+        ?MULTIPLE_MANDATORY_TLV(broadcast_area_success,
+                                16#0608,
+                                ?BROADCAST_AREA_SUCCESS_DOMAIN,
+                                ?BROADCAST_AREA_SUCCESS_RESERVED,
+                                undefined,
+                                undefined)).
+-define(BROADCAST_CONTENT_TYPE_INFO,
+        ?OPTIONAL_TLV(broadcast_content_type_info,
+                      16#0602,
+                      ?BROADCAST_CONTENT_TYPE_INFO_DOMAIN,
+                      ?BROADCAST_CONTENT_TYPE_INFO_RESERVED,
+                      undefined,
+                      undefined)).
+```
+
+
+= EXTERNAL EXPORTS =
+
+Functions for the SMPP parameter syntax manipulation.
+
+
+== chop_tlv(Bin) -> {ok, Tlv, Rest} | {error, Bin} ==
+
+: Types
+ : Bin = bin()
+ : Tlv = bin()
+ : Rest = bin()
+
+
+Returns the leading ``Tlv`` and the ``Rest`` of a  ``Bin``.
+
+
+== decode(Bin, ParamType) -> {ok, Val, Rest} | {error, Error} ==
+
+: Types
+ : Bin = bin()
+ : ParamType = standard() | tlv()
+ : Val = term()
+ : Rest = bin()
+ : Error = int()
+
+
+Decodes a ``Val`` from a ``Bin`` using a  ``ParamType`` specifier.
+
+
+== encode(Val, ParamType) -> {ok, Bin} | {error, Error} ==
+
+: Types
+ : Val = term()
+ : ParamType = standard() | tlv()
+ : Bin = bin()
+ : Error = int()
+
+
+Encodes a ``Val`` using a ``ParamType`` specifier.
+
+
+== get_name(ParamType) -> Name ==
+
+: Types
+ : ParamType = standard() | tlv()
+ : Name = atom()
+
+
+Gets the name from a parameter type declaration.
+
+
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

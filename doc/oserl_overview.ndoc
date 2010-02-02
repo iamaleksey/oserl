@@ -1,0 +1,288 @@
+OSERL
+Open SMPP Erlang Library
+Version: 3.0.0 - Date: %%date(%Y-%m-%d)
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
++ Introduction +
+
+Short Message Peer to Peer (SMPP) protocol [SMPP 5.0] is an open,
+industry standard designed to provide a flexible data communications interface
+for the transfer of short message data between External Short Message Entities
+(ESME), Routing Entities (RE) and Short Message Service Centers (SMSC).
+
+A great amount of the effort required for the development of any of the
+above mention entities is generally spent on a partial implementation of the
+SMPP protocol.  It is rare to find an implementation that covers every aspect
+of the SMPP protocol as OSERL does.
+
+OSERL (open SMPP erlang library) comprises the //entire specification//
+of SMPP version 5.0 (February 20th, 2003).  Moreover,
+every forward and backward compatibility guidelines were adopted at the design
+stage, what makes the resulting library easy to maintain and update to any
+future or previous version of the protocol.
+
+
++ Install OSERL +
+
+You need to have [erlang http://www.erlang.org] installed before
+you attempt to use OSERL.
+
+Erlang is a concurrent functional programming language designed for
+programming large industrial real-time systems. Erlang is dynamically typed
+and has a pattern matching syntax. Functions are defined using recursion
+equations. Erlang provides explicit concurrency, has asynchronous message
+passing and is relatively free from side effects.
+
+Distributed Erlang programs can run transparently on cross-platform
+multi-vendor systems. The language has primitives for detecting run-time errors
+and for dynamic code replacement (i.e. changes to code can be made in a running
+real-time system, without stopping system).
+
+Install oserl:
+
+```
+  tar -zxvf oserl-3.0.0.tar.gz
+  cd common_lib-3.0.0
+  make
+  cd ..
+  cd oserl-3.0.0
+  make
+```
+
+
++ SMPP protocol implementation overview +
+
+The SMPP protocol defines a set of operations, each one taking the form of
+a request and response PDU (Protocol Data Unit).
+
+The first challenge to face on the implementation was to develop packing
+and unpacking functions for the command PDUs.  The approach was to translate
+the entire SMPP protocol specification to erlang terms using the syntax
+notation described next.  Then, we only needed to create the encoding and
+decoding functions for the primitive types used on our notation, and the whole
+problem of the SMPP PDU packing/unpacking was solved.
+
+Notice that whenever a new version of the SMPP protocol gets released,
+we'll just need to update our "static" translation of the protocol to get
+support for new parameters and PDUs.  Packing and unpacking functions
+won't need to be modified.
+
+Besides the PDU format, encoding (decoding) mechanisms and associated error
+codes, the SMPP protocol specification defines how a well behaved SMPP based
+application should be implemented.  Even the behaviour of every ESME (RE or MC)
+is predefined by the protocol specification in many senses, nowadays every
+developer must program these dynamic aspects of the protocol on its own.
+OSERL provides a [generic ESME local#behaviours]  implementation that
+transparently handles just about every feature of the SMPP protocol that
+leaves room for automation, and there are many of them, as we will see
+[later on local#behaviours].
+
+SMPP version 5.0 declares 31 PDUs for 19 operations.  All SMPP PDUs
+comprise of organized set of parameters.  Those parameters are defined by
+means of a primitive type:  //Integer//, //C-Octet String// and
+//Octet String//.  As well as the primitive type, every parameter has a
+//name//, a //domain// (set of permitted values of the primitive
+type) and optionally an associated //error code//.  Furthermore, there is a
+kind of parameters called TLVs (Tagged Length Value), whose definition also
+involves a //tag// (identifier), a set of //reserved values// (of the
+primitive type) and sometimes, a //default value//.
+
+We divided the syntax notation into three layers; [base syntax local#base],
+[param syntax local#param] and [PDU syntax local#pdu] layer.  The first one is
+used to define the erlang data structures for the representation of the SMPP
+primitive types, domains and reserved values.  The parameter syntax provides an
+erlang notation to complete the field  definitions (we'll use field and
+parameter interchangeable), adding to the primitive types of the underlying
+layer: parameter names, error codes and default values.  On top of the parameter
+syntax, a PDU syntax was built, this upper layer defines the structure for a
+PDU descriptor.
+
+Each syntax layer has its own encoding and decoding functions.  The PDU
+packing function relies on the parameter encoder to translate to binary format
+every individual field of a PDU.  In the same way, the parameter syntax layer
+doesn't know how encode a primitive value and again, must rely on the base
+syntax encoder to do the work.  The same process applies  for the unpacking
+mechanism.
+
+| datatype | operation | syntax |
+| PDU datatypes	| PDU pack/unpack | PDU syntax |
+| Param datatypes | Param encoding/decoding | Param syntax |
+| Base datatypes | Base encoding/decoding | Base syntax |
+
+On this table we find the SMPP **operation(3)** module on top of the PDU
+syntax.  This module hides the type descriptors of the SMPP specification to
+higher layers.
+
+
++ SMPP Behaviours +
+
+Generic ESME (External Short Message Entity) and MC (Message Center) behaviours
+are implemented in OSERL.  Behaviours are formalizations of
+"design patters" which can be used to program certain common problems, an ESME
+or MC in this particular case.  The generic ESME behaviour was built on top
+of a generic ESME session behaviour, while generic MC behaviour has
+an underlying generic MC session behaviour.  Both (ESME and MC behaviours)
+are a sort of an extended //gen_server// behaviour.
+
+[img/behaviours.png]
+
+The schema depicted on the previous figure shows how the ESME/MC
+behaviours act as the callback modules for their corresponding session
+behaviours.
+
+The session receives binary data from a TCP/IP connection and unpacks
+SMPP PDUs therein included.  Some operation PDUs are automatically responded
+and managed by session behaviours but others, like an //outbind// or
+//submit_sm// PDU, must be forwarded to the upper ESME/MC behaviour to
+let it decide what to do.
+
+Leaving a callback unimplemented **crashes** the entire
+ESME/SMSC server whenever that particular function gets called.
+
+///
+Every callback is guaranteed to be correct, never a malformed or
+unexpected PDU could trigger a callback.
+///
+
+Due to these behaviours, OSERL handles transparently many aspects of the
+SMPP protocol, saving lots of work to developers by
+
+
+- Automatically handling PDU sequencing. Assigns monotonically
+  increasing sequence numbers and matches requests with their corresponding
+  responses in an asynchronous manner.
+
+- OSERL handles automatically all timers defined by the SMPP protocol
+  specification version 5.0: session init timer, enquire link timer,
+  inactivity timer and response timer.  On a timer expiration, the action
+  recommended on the protocol specification is triggered.
+
+- Handles every operation failure, including when the PDU is unrecognized
+  or malformed, invalid field length, PDU data is unexpected and deemed
+  invalid, and the PDU is not allowed in the current state.
+
+  Upon failure the appropriate response is automatically issued.  Even
+  errors associated to individual parameters of the PDUs are detected, and
+  reported using the corresponding error code.
+
+  Every error code in the protocol specification was implemented.
+
+- Detects connection failures and provides callbacks to help implementing
+  recovery mechanisms and restore dropped sessions.
+
+- Controls congestion using the ``congestion_state`` field.
+
+- Every forward and backwards compatibility guidelines were adopted.
+
+- Supports every operation and every field of the SMPP protocol
+  version 5.0.
+
+
++ Developing SMS based applications with OSERL +
+
+Even if you don't have any prior experience with it, I strongly recommend
+you considering erlang as the programming language for the development of
+your ESME/MC or RE.
+
+If you are reluctant to experience with a new (better ;-) development
+environment, you may want to consider using OSERL anyway.  Erlang has
+[mechanisms to talk to other languages http://www.erlang.org/doc/r9c/doc/tutorial/part_frame.html] such us C or java.
+
+Before starting to implement a SMPP based application it is highly recommended
+to read the **SMPP specification v5.0**.  If you are new to erlang
+behaviours, reading the **Erlang Design Principles** will be of a great help.
+Understanding the erlang **gen_server** behaviour will make using **gen_esme**
+and **gen_mc** behaviours much easier.
+
+If you are planning to implement a SMPP ESME, use the **gen_esme(3)** behaviour
+as your starting point.  To implement a SMPP MC, use **gen_mc(3)** instead
+(please note that the **gen_mc(3)** behaviour has been implemented mainly to
+complement the **gen_esme(3)** behaviour, for complex scenarios you may need
+to implement your MC on your own).
+
+OSERL also provides a set of utility modules you may want to consider when
+implementing your SMPP applicaiton.
+
+
+++ Storage modules ++
+
+: log_mgr(3):
+  PDU log manager (feel free to implement your own log handler)
+: disk_log_hrl(3):
+  Sample log handler based on disk logs.
+: tty_log_hrl(3):
+  Sample tty/file log handler (useful for debugging)
+
+
+++ Other utility modules ++
+
+: operation(3):
+  Exports **get_value/2** and **get_value/3** for extracting PDU values.
+: sm(3):
+  Some utility function to handle UDH, message fragmentation and some other
+  common operations.
+: smpp_error(3):
+  Error formatting.
+
+
+Please refer to the modules documentation for greater details.  You may also
+find some preliminary examples in the **test** directory.
+
+
++ Developers +
+
+- Anders Nygren
+- Enrique Marcote Peña
+- Miguel Rodriguez Rubinos
+
+
++ Contributors +
+
+- Heinrich Venter
+- Joey
+- Joseph Wayne Norton
+
+
++ Documentation +
+
+To consult the documentation simply type:
+
+```
+erl -man ./gen_esme.3
+```
+
+
+You may also find the documentation in //xhtml// and //pdf// formats under
+the **doc** directory.
+
+
++ Special Thanks +
+
+Thanks to all who have helped me out with their feedback, very specially to
+those who have even contributed with code.
+
+
++ TODO +
+
+- Emacs **gen_esme** and **gen_mc** templates.
+- Improve test coverage.
+- Better examples.
+
+
++ REFERENCES +
+
+: [SMPP 5.0]
+  Short Message Peer-to-Peer Protocol Specification. Version 5.0. SMS Forum.
+
+: [3GPP TS 23.040]
+  Technical Realization of the Short Message Service (SMS) Release 4.
+  Version 5.0.0. [3GPP http://www.3gpp.org].
+
+
++ SEE ALSO +
+
+%APPLICATION%(1)
+

@@ -1,0 +1,132 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel.rodriguez@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DESCRIPTION =
+
+A SMPP **gen_event** manager for SMPP PDU operation logging.
+
+This module provides a mechanism to log PDUs in a set of logging handlers.
+These handlers may be added and swapped dynamically.
+
+
+During **gen_esme** and **gen_esme** startup the **log_mgr** log manager is
+started, although no event handler is added at that point, thus no logging is
+done until a handler is explicitly added  by calling the function
+``add_handler/3``.
+
+A good place to add the log handlers is in the ``init\1`` function of the
+ESME/SMSC callback module.
+
+OSERL provides two default handlers, **disk_log_hlr** and **tty_log_hlr**.
+Programmers may also implemented their own handlers.  All handlers added to the
+SMPP logger must handle the following events.
+
+``{pdu, Pdu}`` where ``Pdu`` is the binary PDU to be logged.
+
+Note also that a number of system internal events may be received, a catch-all
+clause last in the definition of the event handler callback function
+``Module:handle_event/2`` is necessary. This also holds true for
+``Module:handle_info/2``, as there are a number of system internal messages
+the event handler must take care of as well.
+
+Every time a PDU is packed or unpacked at the session layer, the function
+``log_mgr:pdu/1`` is called.  If no log handler was added to the **log_mgr**
+these calls have no effect.
+
+
+= START/STOP EXPORTS =
+
+Functions for starting and stopping the SMPP log manager.
+
+
+== start() -> Result ==
+
+== start_link() -> Result ==
+
+: Types
+ : Result = {ok, Pid} | {error, Error}
+ : Pid = pid()
+ : Error = {already_started, Pid}
+
+
+Starts the log manager.
+
+
+== stop(Pid) -> ok ==
+
+: Types
+ : Pid = pid()
+
+
+Stops the log manager.
+
+
+= HANDLER EXPORTS =
+
+Exported functions for managing log handlers.
+
+
+== add_handler(Pid, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see gen_event:add_handler/3
+
+
+Adds a new log handler to the SMPP log manager.  The event handler must be
+implemented as a gen_event callback  module, see gen_event(3).
+
+``Pid`` is the process id of the log manager.
+
+
+== delete_handler(Pid, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see gen_event:delete_handler/3
+
+
+Deletes a log handler from the SMPP log manager calling, see gen_event(3).
+The handler ``terminate/2`` must return the configuration arguments.
+
+
+== swap_handler(Pid, {Handler1, Args}, {Handler2, Args}) -> Result ==
+
+: Types
+ : Handler1, Args1, Handler2, Args2, Result -- see gen_event:swap_handler/3
+
+
+Replaces an old log handler with a new log handler in the SMPP log manager.  The
+configuration from the old handler is passed to the second handler and used
+as default if not defined.
+
+
+= EVENT EXPORTS =
+
+Event notification functions.
+
+
+== pdu(Pid, Data) -> ok  ==
+
+: Types
+ : Pid = pid()
+ : Data = io_list() | binary()
+
+
+Notifies SMPP PDUs to all the installed handlers in the format ``{pdu, Pdu}``.
+``Data`` can be the binary PDU or a list of binaries, in the later case, the
+``Pdu`` sent to the handlers will be concatenation of all the binaries in the
+list.
+
+
+= SEE ALSO =
+
+%APPLICATION%

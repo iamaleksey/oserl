@@ -1,0 +1,580 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DATATYPES =
+
+The following data-types are meta-types used to specify the SMPP parameter
+types.  These meta-types are used to encode and decode values and check that
+they match the parameter specification.
+
+
+== {constant, Value} ==
+
+: Types
+ : Value = bin()
+
+
+Constant declaration.  Constants are defined in binary format and their value
+is packed as is.
+
+
+== {integer, Size, Min, Max} ==
+
+: Types
+ : Size = int()
+ : Min = int()
+ : Max = int()
+
+
+Integer data-type declaration. ``Size`` is the size in octets, ``Min`` the
+lower limit (included) and ``Max`` the upper limit (included).
+
+
+== {c_octet_string, Fixed, Size, Format} ==
+
+: Types
+ : Fixed = bool()
+ : Size = int()
+ : Format = fun(Str) -> bool()
+ : Str = string()
+
+
+
+C-Octet String data-type declaration.  In SMPP, a C-Octet String must
+always be NULL terminated, thus the minimun length allowed is 1 octet.
+
+The ``Size`` of a ``c_octet_string`` parameter specification must be defined
+according to SMPP specs.  The ``Size`` includes the trailing NULL_CHARACTER.
+When enconding the string corresponding to a ``c_octet_string`` the trailing
+NULL_CHARACTER is automatically included.  An of course, this character is
+also automatically removed at decode time.
+
+``Fixed`` is a boolean indicating if the parameter has a fixed length or not.
+``Size`` indicates the size in octets including trailing NULL_CHARACTER and
+``Format`` is a format predicate that the C-Octet String must satisfy in
+order to match the type specification.
+
+
+== {octet_string, Fixed, Size, Format} ==
+
+: Types
+ : Fixed = bool()
+ : Size = int()
+ : Format = fun(Str) -> bool()
+ : Str = string()
+
+
+Octet String data-type declaration.  An Octet String is not necessary
+to be NULL terminated, thus the minimun length allowed is 0 octets.
+
+``Fixed`` is ``true`` if the parameter is of fixed length, ``false`` otherwise.
+``Size`` is the size in octets and ``Format`` is a format predicate that
+the value must satisfy in order to match the type specification.
+
+
+== {list, Type, Size} ==
+
+: Types
+ : Type = {constant, Value} |
+          {integer, Size, Min, Max} |
+          {c_octet_string, Fixed, Size, Format} |
+          {octet_string, Fixed, Size, Format} |
+          {list, Type, Size} |
+          {composite, Name, Tuple} |
+          {union, Types}
+ : Value    = bin()
+ : Size     = int()
+ : Min      = int()
+ : Max      = int()
+ : Format   = fun(Str) -> bool()
+ : Str      = string()
+ : Fixed    = bool()
+ : Name     = atom()
+ : Tuple    = term()
+ : Types    = [Type]
+
+
+List data-type declaration.  Represents a list with elements of the same
+``Type``.
+
+Notice that nested data-type definitions are allowed.  ``Type`` could be:
+
+- a constant, even it doesn't make much sense.
+
+- basic data-type; integer, c_octet_string or octet_string.  A list of basic
+  values.
+
+- complex data-type such as tlvs lists, composites or union declarations.
+
+
+``Type`` defines the type of the elements on the list.  Any kind of data-type
+declaration is valid.  ``Size`` is  the maximum number of elements.
+
+
+== {composite, Name, Tuple} ==
+
+: Types
+ : Name  = atom()
+ : Tuple = term()
+
+
+Composite data-type declaration.  If ``Name`` is undefined the composite is
+said to be anonymous and thus represented by a tuple.  Named composites are
+represented by records of type ``Name``.  It is responsibility of the
+programmer to provide the appropriate record definitions.
+
+``Name`` is ignored when encoding the value into a binary stream.  It is only
+considered to translate the binary representation of a composite into erlang
+records.  It also helps to document the declaration of nested data structures.
+It'll be a good practice to give the composite (and the associated record) the
+same ``Name`` that the SMPP Protocol Specification uses [SMPP 5.0].
+
+Whether named or not, ``Tuple`` is a tuple (never a record) defining the type
+structure of the composite.  For example, in a composite with two fields; an
+integer and an octet_string, ``Tuple`` would be something
+like:
+
+```
+{?INTEGER_4, VAR_OCTET_STRING(21)}
+```
+
+Nested data-type definitions are allowed.  An element on the composite may be
+of the type:
+
+- constants.
+
+- basic data-types; integer, c_octet_string or octet_string.
+
+- complex data-types such as lists, composites or union declarations.
+
+``Name`` is the identifier of the composite.  Must be left ``undefined`` if the
+composite is anonymous. ``Tuple`` defines the structure of the composite.
+Any kind of data-type declaration is a valid term of this tuple.
+
+
+== {union, Types} ==
+
+: Types
+ : Types = [Type]
+ : Type = {constant, Value} |
+          {integer, Size, Min, Max} |
+          {c_octet_string, Fixed, Size, Format} |
+          {octet_string, Fixed, Size, Format} |
+          {list, Type, Size} |
+          {composite, Name, Tuple} |
+          {union, Types}
+ : Value    = bin()
+ : Size     = int()
+ : Min      = int()
+ : Max      = int()
+ : Fixed    = bool()
+ : Format   = fun(Str) -> bool()
+ : Str      = string()
+ : Name     = atom()
+ : Tuple    = term()
+
+
+Union data-type declaration.  Defines a new type which is the union of
+``Types``.  For example the destination address in a //submit_multi// command
+represents either a distribution list or an SME address (these addresses have
+different data-types).
+
+```
+{union, [SmeAddress, DlAddress]}
+```
+
+Where ``SmeAddress`` and ``DlAddress`` are composite data-type definitions.
+Notice that nested data-type declarations are allowed.  In SMPP the union
+declaration is mainly used in examples like the one above mentioned, where the
+union types are composites. ``Types`` a list with the types of the union.
+
+
+
+= DESCRIPTION =
+
+Base syntax used for the SMPP implementation.  Even the content of this
+header file can be considered implementation-specific, the definitions
+herein included are inspired on the conventions used on [SMPP 5.0].
+
+As a guideline some comments include references to the specific section
+numbers on [SMPP 5.0].
+
+The best way to understand the meaning of the base syntax and how everything
+works, is by a complete example.
+
+On page 72, section 4.2.3.1 of the SMPP specification [SMPP 5.0], the
+following fields are defined as part of the //submit_multi</i> operation
+
+=== Fragment of Table 4-18 submit_multi PDU ===
+
+| Field Name         | Size Octets |       Type     |
+| number_of_dests    |      1      |     Integer    |
+| dest_address       | Var. max 24 |    Composite   |
+| - dest_flag        |      1      |     Integer    |
+| - dest_addr_ton    |      1      |     Integer    |
+| - dest_addr_npi    |      1      |     Integer    |
+| - destination_addr | Var. max 21 | C-Octet String |
+| dest_address       | Var. max 23 |    Composite   |
+| - dest_flag        |      1      |     Integer    |
+| - dl_name          | Var. max 21 | C-Octet String |
+
+
+``dest_address`` is a composite field containing a mandatory ``dest_flag``
+field (``dest_flag`` is a constant) and either an SME address (when
+``dest_flag`` is 0x01) or a distribution list name (``dest_flag`` is 0x02);
+thus ``dest_address`` is an union. Additionally the field can be encoded
+multiple times according to the value specified in the ``number_of_dests``
+field; ``dest_address`` is also a list.
+
+Using the base syntax, this declaration has the following internal
+representation:
+
+```
+-define(DEST_FLAG_SME_DATATYPE, ?CONSTANT(16#01)).
+-define(DEST_FLAG_DL_DATATAYPE, ?CONSTANT(16#02)).
+-define(DEST_ADDR_TON_DATATAYPE, ?BOUND_INTEGER(1, 2#00000110)).
+-define(DEST_ADDR_NPI_DATATAYPE, ?BOUND_INTEGER(1, 2#00010010)).
+-define(DESTINATION_ADDR_DATATAYPE, ?VAR_C_OCTET_STRING(21)).
+-define(DL_NAME_DATATAYPE, ?VAR_C_OCTET_STRING(21)).
+
+-define(DEST_ADDRESS_SME_DATATAYPE,
+        ?COMPOSITE(dest_address_sme,
+                   {?DEST_FLAG_SME_DATATAYPE,
+                    ?DEST_ADDR_TON_DATATAYPE,
+                    ?DEST_ADDR_NPI_DATATAYPE,
+                    ?DESTINATION_ADDR_DATATAYPE})).
+-define(DEST_ADDRESS_DL_DATATAYPE,
+        ?COMPOSITE(dest_address_dl,
+                   {?DEST_FLAG_DL_DATATAYPE,
+                    ?DL_NAME_DATATAYPE})).
+
+-define(DEST_ADDRESS_DATATAYPE,
+        ?UNION([?DEST_ADDRESS_SME_DATATAYPE,
+                ?DEST_ADDRESS_DL_DATATAYPE])).
+
+-define(DEST_ADDRESS_MULTI_DATATAYPE, ?LIST(?DEST_ADDRESS_DATATAYPE)).
+```
+
+Notice that ``DEST_ADDRESS_MULTI_DATATAYPE`` embraces the definition of both
+fields; ``number_of_dests`` and ``dest_address``, since a list is encoded in a
+``Length ++ List`` fashion, ``number_of_dests`` doesn't need to be explicitly
+declared.
+
+Additionally, two records must be defined in order to successfully decode
+named composites:
+
+```
+-record(dest_address_sme,
+        {dest_flag, dest_addr_ton, dest_addr_npi, destination_addr}).
+-record(dest_address_dl,
+        {dest_flag, dl_name}).
+```
+
+The record identifiers match the names provided in the composite declaration
+for the decoding function to work propertly.  These names are
+ignored by the encode function though.
+
+
+= EXTERNAL EXPORTS =
+
+Functions for the SMPP base syntax manipulation.
+
+== decode(Binary, Type) -> {ok, Value, Rest} | {error, Reason} ==
+
+: Types
+ : Binary = bin()
+ : Type = {constant, Constant} |
+          {integer, Size, Min, Max} |
+          {c_octet_string, Fixed, Size, Format} |
+          {octet_string, Fixed, Size, Format} |
+          {list, Type, Size} |
+          {composite, Name, Tuple} |
+          {union, Types}
+ : Constant = bin()
+ : Size = int()
+ : Min = int()
+ : Max = int()
+ : Fixed = bool()
+ : Format = fun(Str) -> bool()``
+ : Str = string()
+ : Name = atom()
+ : Tuple = term()
+ : Types = [Type]
+ : Value = term()
+ : Rest = bin()
+ : Reason = {type_mismatch, Type, Details}
+ : Details = Data | Reason
+ : Data = bin() | int() | string()
+
+
+Decodes a ``Value`` from the head of a ``Binary`` using a ``Type`` specifier.
+As the ``Value`` is decoded a type checking operation is performed, if
+successful the term ``{ok, Value, Rest}`` is returned (where ``Rest`` is the
+remainder of the unused binary), otherwise
+``{error, {type_mismatch, Type, Details}}`` is returned.
+
+Every type is decoded according to [SMPP 5.0].
+
+
+=== constant ===
+
+Binaries, strings and integers are valid constants.
+
+If the binary representation of the Constant is at the head of Binary,
+the Constant is returned as Value.  Otherwise an error is reported.
+
+
+=== integer ===
+
+Checks if Value is a valid Size octets integer.  Must be an integer
+between 0 and ``math:pow(256, Size) - 1``.
+
+An integer of Size octets is taken from the head of the Binary, if not
+enough bytes an error is reported.
+
+
+=== c_octet_string ===
+
+Checks if Value is a valid C-Octet String.  A C-Octet String must be
+NULL_CHARACTER ($\0) terminated.
+
+When a fixed size is given and the Size-th octet on the Binary is the
+NULL_CHARACTER, a ``Size - 1`` long binary is taken an translated into
+string using the binary_to_list BIF.
+
+On variable length strings, every octet until the NULL_CHARACTER is taken
+using the function ``cl_binary:take_until/3`` (common_lib).  The result is
+translated to a list with the BIF binary_to_list.  Notice that the resulting
+``Value`` is always smaller than ``Size`` characters long.
+
+<font color="red">Important (Since version 0.2).</font>  The base syntax
+takes care of trailing NULL_CHARACTERs for you so, even though you have to count
+this character when setting the ``Size`` field, <b>do not</b> add a
+trailing NULL_CHARACTER in your ``c_octet_string`` values,
+``base_syntax:decode/2`` handles NULLs on its own.
+
+As a rule of thumb.  Set the ``Size`` of your ``c_octet_string``
+accordingly to SMPP specs.  Do not expect decoded ``c_octet_string`` values to
+have a trailing NULL_CHARACTER.  This character is automatically removed at
+decode time.
+
+
+=== octet_string ===
+
+When a fixed size is given the Value must be exactly 0 or Size
+characters long.  For variable lengths any range between 0 and Size
+octets is considered to be correct.
+
+Fixed size Octet Strings are decoded pretty much like a C-Octet String,
+but no terminating NULL_CHARACTER is required.
+
+It's not easy to guess where a variable Octet String ends, in fact this
+data-type makes sense only if encapsulated inside a TLV.  In order to let a
+TLV recursively decode an inner variable Octet String the following rule
+applies; if ``size(Binary)`` less than ``Size, the whole ``Binary`` is
+translated to a list (string), otherwise the first ``Size`` octets of the
+``Binary`` are taken.
+
+
+=== list ===
+
+Every Value in the list must conform the given Type.
+
+To decode a list, a (``Size`` / 256) + 1 octets integer indicating the
+total number ``Num`` of values is extracted from the head of the ``Binary``,
+then a list with ``Num`` elements is decoded using the base ``Type`` of the
+list.  This list of ``Values`` is returned, ``Num`` is discarded.
+
+
+=== composite ===
+
+In a composite every field is checked against the corresponding field
+in the tuple with the types.
+
+Every field in the composite is decoded, one at a time, using the
+corresponding field in the type descriptor.  On anonymous composites
+(``Name = undefined``) the returning Value is a tuple built from
+the individual fields, named composites tuples are translated to a record of
+type ``Name``.
+
+
+=== union ===
+
+The Value must conform at least one of the given types.
+
+An union value is decoded using the first type descriptor conformed
+by the value.
+
+
+== encode(Value, Type) -> {ok, Binary} | {error, Reason} ==
+
+: Types
+ : Value = term()
+ : Type = {constant, Constant} |
+          {integer, Size, Min, Max} |
+          {c_octet_string, Fixed, Size, Format} |
+          {octet_string, Fixed, Size, Format} |
+          {list, Type, Size} |
+          {composite, Name, Tuple} |
+          {union, Types}
+ : Constant = bin()
+ : Size = int()
+ : Min = int()
+ : Max = int()
+ : Fixed = bool()
+ : Format = fun(Str) -> bool()
+ : Str = string()
+ : Name = atom()
+ : Tuple = term()
+ : Types = [Type]
+ : Binary = bin()
+ : Reason = {type_mismatch, Type, Details}
+ : Details = Data | Reason
+ : Data = bin() | int() | string()
+
+
+Encodes a ``Value`` using a ``Type`` specifier.  ``Before`` encoding the value
+a type checking operation is done, if unsuccessful the term
+``{error, {type_mismatch, Type, Details}}`` is returned.
+
+Every type is encoded according to [SMPP 5.0].
+
+
+=== constant ===
+
+Value must be identical to given constant.  Binaries, strings and
+integers are valid constants.
+
+The Value is directly encoded into a binary.
+
+
+=== integer ===
+
+Checks if ``Value`` is a valid ``Size`` octets integer.  Must be an integer
+between 0 and ``math:pow(256, Size) - 1``.
+
+The integer is translated into binary using Size octets.
+
+
+=== c_octet_string ===
+
+Checks if ``Value`` is a valid C-Octet String: Just a string with ``Size - 1``
+characters.  Notice that C-Octet Strings (erlang) values should not include
+the terminating NULL_CHARACTER ($\0), it is automatically included by the
+encode function.
+
+When a fixed size is given, the ``Value`` (having no terminating
+NULL_CHARACTER) must be exactly ``0`` or ``Size - 1`` characters long.  For
+variable lengths any range between ``0`` and ``Size - 1`` octets is considered
+to be correct.
+
+The string is translated into binary using the BIF ``list_to_binary``, thus
+one octet per character.
+
+As a rule of thumb.  Set the ``Size`` of the ``c_octet_string`` declaration
+accordingly to SMPP specs.  Do not add the trailing NULL_CHARACTER to the
+values of the ``c_octet_string`` parameters.  The NULL_CHARACTER is
+automatically included at encode time.
+
+
+=== octet_string ===
+
+When a fixed size is given the Value must be exactly ``0`` or ``Size``
+characters long.  For variable lengths any range between ``0`` and ``Size``
+octets is considered to be correct.
+
+An string is translated into binary using the BIF ``list_to_binary``, thus one
+octet per character.
+
+
+=== list ===
+
+Every Value in the list must conform the given ``Type``.
+
+To encode a list, a ``(Size / 256) + 1`` octets integer indicating the
+total number of values is prepended to the list of encoded values.  Every
+element on the list is encoded (and appended) according to the given type.
+
+
+=== composite ===
+
+In a composite every field is checked against the corresponding field
+in the tuple with the types.
+
+Every field in the composite is encoded using the corresponding field
+in the type descriptor.  The global result is obtained concatenating every
+encoded field in the same order of appearance in the composite.  On named
+composites the identifier of the record is discarded (not encoded).
+
+
+=== union ===
+
+The ``Value`` must conform at least one of the given types.
+
+An union value is encoded using the first type descriptor conformed
+by the value.
+
+
+== fit(Type, Size) -> NewType ==
+
+: Types
+ : Type = {constant, Constant} |
+          {integer, Size, Min, Max} |
+          {c_octet_string, Fixed, Size, Format} |
+          {octet_string, Fixed, Size, Format} |
+          {list, Type, Size} |
+          {composite, Name, Tuple} |
+          {union, Types}
+ : Constant = bin()
+ : Size = int()
+ : Min = int()
+ : Max = int()
+ : Fixed = bool()
+ : Format = fun(Str) -> bool()``
+ : Str = string()
+ : Name = atom()
+ : Tuple = term()
+ : Types = [Type]
+ : NewType  = Type
+
+
+Fits a type specifier to a given ``Size``.
+
+- Constants, composites and union specifiers are left unchanged.
+
+- On strings (``c_octet_string`` and ``octet_string``), besides the size field,
+  the length is set to fixed (``fixed = true``).
+
+- The min and max fields are not changed on integers, the size is
+  changed with no further checking.
+
+- If the new ``Size`` is greater than the one permitted by the ``Type``, the
+  ``Type`` is returned unchanged.
+
+This function was mainly conceived to adapt the type specification to a
+TLV parameter definition.
+
+
+= REFERENCES =
+
+: [SMPP 5.0]
+  Short Message Peer-to-Peer Protocol Specification. Version 5.0. SMS Forum.
+
+: [3GPP TS 23.040]
+  Technical Realization of the Short Message Service (SMS) Release 4.
+  Version 5.0.0. [3GPP http://www.3gpp.org].
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

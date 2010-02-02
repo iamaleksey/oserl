@@ -1,0 +1,845 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= BEHAVIOUR =
+
+This module implements the ``gen_server`` and ``gen_esme_session`` behaviours.
+
+
+= DESCRIPTION =
+
+The ``gen_esme`` behaviour acts as an extended ``gen_server``, homonymous
+functions have the exact same meaning.
+
+The ESME holds one SMPP session only.  If more that one session is needed at a
+time, several ``gen_esme`` processes may be started, each with their respective
+settings.
+
+On start time no SMPP session is initiated, a call to ``open/3``
+is required.  In order to bind to a peer MC, the programmer needs to call
+``bind_receiver/3``, ``bind_transceiver/3`` or ``bind_transmitter/3`` to
+explicitly bind the session.  Alternatively the ESME can be started in listening
+mode by calling ``listen/2``.  In the later case the ESME will typically listen
+for incoming connections and wait for an //outbind// request.
+
+The ESME starts a log manager (see **smpp_log_mgr(3)**) but no log handlers are
+installed by default.  The function ``add_log_handler/3`` can be used to
+install log handlers.   Two sample log handlers are included in oserl,
+**smpp_disk_log_hlr(3)** and **smpp_tty_log_hlr(3)**.
+
+This behaviour implements a simple ESME that may not suite all needs, if
+something more complex is required, it is recommended to implement a custom ESME
+using the ``gen_esme_session`` behaviour directly.
+
+Please refer to **test/test_esme.erl** for a minimal ESME example.
+
+
+= START/STOP EXPORTS =
+
+Exported functions.
+
+
+== start(Module, Args, Opts) -> Result ==
+== start(SrvName, Module, Args, Opts) -> Result ==
+
+== start_link(Module, Args, Opts) -> Result ==
+== start_link(SrvName, Module, Args, Opts) -> Result ==
+
+: Types
+ : SrvName = {local, Name} | {global, Name}
+ : Name = atom()
+ : Module = atom()
+ : Args = term()
+ : Opts = [Opt]
+ : Opt = {debug, Dbgs} |
+         {timeout, Time}  |
+         {spawn_opt, SOpts} |
+         {rps, Rps} |
+         {file_queue, File}
+ : Dbgs = [Dbg]
+ : Dbg = trace |
+         log |
+         statistics |
+         {log_to_file, FileName} |
+         {install, {Func, FuncSt}}
+ : SOpts = [term()]
+ : Rps = int()
+ : File = string()
+ : Result = {ok, Pid} | ignore | {error, Error}
+ : Pid = pid()
+ : Error = {already_started, Pid} | term()
+
+
+Starts the ESME server.
+
+``SrvName``, ``Module``, ``Args`` and ``debug``, ``timeout`` and
+``spawn_opt`` ``Opts`` have the exact same meaning as in gen_server behavior.
+ESME options are the following:
+
+- rps: Max number of SMPP requests per second.  If not defined, the
+  default value is 1000.
+
+- file: Filename where the queue is stored.  If not defined memory queues will
+  be used instead.  Persistent disk queues are preserved across failures.
+
+``Args`` is a term that is given as is to ``init/1``.
+
+
+= SERVER EXPORTS =
+
+Exported functions.
+
+
+== call(SrvRef, Req) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Reply = term()
+
+
+Equivalent to gen_server:call/2.
+
+
+== call(SrvRef, Req, Timeout) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Timeout = int() | infinity
+ : Reply = term()
+
+
+Equivalent to gen_server:call/3.
+
+
+== cast(SrvRef, Req) -> Reply ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Req = term()
+ : Reply = term()
+
+
+Equivalent to gen_server:cast/2.
+
+
+== reply(Client, Reply) -> true ==
+
+: Types
+ : Client = term()
+ : Reply  = term()
+
+
+Equivalent to gen_server:reply/2.
+
+
+= CONNECT EXPORTS =
+
+Functions to handle connections on the SMPP session.
+
+
+== listen(SrvRef, Opts) -> Result ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Opts = [Opt]
+ : Opt = {addr, Addr} | {port, Port}
+ : Addr = ip_address()
+ : Port = int()
+ : Result = ok | {error, Reason}
+
+
+Puts the ESME on listening mode waiting for incoming connections.  When
+a connection request arrives, the callback ``handle_accept/2`` is called.
+
+``Opts`` is a list of options with the following meaning:
+
+- addr: IP address of the listening interface, if undefined the default
+  address will be determined as follows:
+
+```
+default_addr() ->
+    {ok, Host} = inet:gethostname(),
+    {ok, Addr} = inet:getaddr(Host, inet),
+    Addr.
+```
+
+- port: is the SMPP port where the ESME listens at.  If not defined the default
+  2775 is used.
+
+
+If the function fails to listen ``{error, Reason}`` is returned, otherwise
+the atom ``ok`` is returned.
+
+
+== open(SrvRef, Addr, Opts) -> Result ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Addr = ip_address()
+ : Opts = [Opt]
+ : Opt = {port, Port} | {timers, Timers}
+ : Port = int()
+ : Timers = timers_smpp()
+ : Result = ok | {error, Reason}
+ : Reason = term()
+
+
+Opens a SMPP session and connects to ``Addr`` and ``Port``.
+
+This function returns ``ok`` if the connection succeeds, or ``{error, Reason}``
+if an error ocurrs when trying to connect to ``Addr`` and ``Port``.
+
+``Opts`` is a list of options with the following meaning:
+
+- port: SMPP port.  If not defined 2775 is used.
+
+- timers: SMPP ``timers_smpp`` for the session.  If not defined default timers
+  are used.
+
+
+== close(SrvRef) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+
+
+Asynchronous call to close the underlaying SMPP session.  Note that the session
+is terminated regardless of its current state.  See ``handle_closed/2``.
+
+
+= SMPP EXPORTS =
+
+SMPP operations.
+
+
+== bind_receiver(SrvRef, Params, Args) -> ok ==
+
+== bind_transceiver(SrvRef, Params, Args) -> ok ==
+
+== bind_transmitter(SrvRef, Params, Args) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+
+
+Sends a //bind_receiver//, //bind_transceiver// or //bind_transmitter// request
+to the other peer.
+
+The callback ``handle_req/4`` is called to notify the reference of the request
+to the callback module.  This reference is later passed as the second argument
+to ``handle_resp/3`` when the response arrives.
+
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/4``.
+
+Note that the ESME is started paused.  If desired, after the bind request a
+explicit call to ``resume/1`` is required in order to start processing queued
+messages.
+
+
+== broadcast_sm(SrvRef, Params, Args) -> ok ==
+== broadcast_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== cancel_broadcast_sm(SrvRef, Params, Args) -> ok ==
+== cancel_broadcast_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== cancel_sm(Session, Params, Args) -> ok ==
+== cancel_sm(Session, Params, Args, Timeout) -> ok ==
+
+== data_sm(SrvRef, Params, Args) -> ok ==
+== data_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== query_broadcast_sm(SrvRef, Params, Args) -> ok ==
+== query_broadcast_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== query_sm(SrvRef, Params, Args) -> ok ==
+== query_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== replace_sm(SrvRef, Params, Args) -> ok ==
+== replace_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+== submit_multi(SrvRef, Params, Args) -> ok ==
+== submit_multi(SrvRef, Params, Args, Timeout) -> ok ==
+
+== submit_sm(SrvRef, Params, Args) -> ok ==
+== submit_sm(SrvRef, Params, Args, Timeout) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Timeout = int()
+
+
+Issues an asynchronous //broadcast_sm//, //cancel_broadcast_sm//, //cancel_sm//,
+//data_sm//, //query_broadcast_sm//, //query_sm//, //replace_sm//,
+//submit_multi// or //submit_sm// operation.
+
+The function returns ``ok`` and the SMPP request is issued immediately.  The
+request does not go through the ESME queue and is not controlled by the
+throttler.  Right after sending the request to the other peer, the callback
+``handle_req/4`` is called to notify the reference of the request to the
+callback module.  This reference is later passed as the second argument to
+``handle_resp/3`` when the response arrives.
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/4``.  The
+default ``Timeout`` is 2 minutes (TCP SYN_SENT).
+
+
+== unbind(SrvRef, Args) -> ok ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Result = {ok, PduRsp} | {error, Error}
+ : PduRsp = pdu()
+ : Error = int()
+
+
+Issues an unbind operation.   The function returns ``ok`` and the unbind
+request is issued immediately.  The request does not go through the ESME queue
+and is not controlled by the throttler.  Right after sending the request to the
+other peer, the callback ``handle_req/4`` is called to notify the reference of
+the request to the callback module.  This reference is later passed as the
+second argument to ``handle_resp/3`` when the response arrives.
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/4``.
+
+Unbind does not stop pause the ESME, the ESME will only be paused when
+the session is closed.  In order to stop processing queued messages  before
+unbinding, it is necessary to explicitly call ``pause/1``.
+
+
+= QUEUE EXPORTS =
+
+Exported functions using the requests queue.
+
+
+== queue_broadcast_sm(SrvRef, Params, Args) -> ok ==
+== queue_broadcast_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_cancel_broadcast_sm(SrvRef, Params, Args) -> ok ==
+== queue_cancel_broadcast_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_cancel_sm(Session, Params, Args) -> ok ==
+== queue_cancel_sm(Session, Params, Args, Priority) -> ok ==
+
+== queue_data_sm(SrvRef, Params, Args) -> ok ==
+== queue_data_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_query_broadcast_sm(SrvRef, Params, Args) -> ok ==
+== queue_query_broadcast_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_query_sm(SrvRef, Params, Args) -> ok ==
+== queue_query_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_replace_sm(SrvRef, Params, Args) -> ok ==
+== queue_replace_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_submit_multi(SrvRef, Params, Args) -> ok ==
+== queue_submit_multi(SrvRef, Params, Args, Priority) -> ok ==
+
+== queue_submit_sm(SrvRef, Params, Args) -> ok ==
+== queue_submit_sm(SrvRef, Params, Args, Priority) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Priority = int()
+
+
+Queues an asynchronous //broadcast_sm//, //cancel_broadcast_sm//, //cancel_sm//,
+//data_sm//, //query_broadcast_sm//, //query_sm//, //replace_sm//,
+//submit_multi// or //submit_sm// operation.
+
+The function returns ``ok`` and the SMPP request is inserted into the ESME
+queue.  Once the request is sent to the other peer, the callback
+``handle_req/4`` is called to notify the reference of the request to the
+callback module.  This reference is later passed as the second argument to
+``handle_resp/3`` when the response arrives.
+
+If unspecified ``Priority`` is ``10``.  ``0`` is the highest priority.  Requests
+with higher priority are processed first.
+
+``Args`` is an arbitrary term that is passed as is to ``handle_req/4``.
+
+
+== queue_len(SrvRef) -> Len ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Len = int()
+
+
+Returns the length of the queue (number of queued requests).
+
+
+== queue_out(SrvRef) -> Reqs ==
+== queue_out(SrvRef, Num) -> Reqs ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Num = int()
+ : Reqs = [Req]
+ : Req = {{CmdName, Params}, Args}
+ : CmdName = broadcast_sm |
+             cancel_broadcast_sm |
+             cancel_sm |
+             data_sm |
+             query_broadcast_sm |
+             query_sm |
+             replace_sm |
+             submit_multi |
+             submit_sm
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+
+
+Removes ``Num`` requests from the front of the queue.  Returns  the  list of
+requests removed.  If there are no enough requests on the queue, ``Reqs`` may
+contain less elements than ``Num``.  If the queue is empty an empty list is
+returned.
+
+If ``Num`` is not specified, 1 request will be removed.
+
+Notice that the returned requests will be removed from the queue and not
+processed.
+
+
+== queue_out_r(SrvRef) -> Reqs ==
+== queue_out_r(SrvRef, Num) -> Reqs ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Name = atom()
+ : Node = atom()
+ : Num = int()
+ : Reqs = [Req]
+ : Req = {{CmdName, Params}, Args}
+ : CmdName = broadcast_sm |
+             cancel_broadcast_sm |
+             cancel_sm |
+             data_sm |
+             query_broadcast_sm |
+             query_sm |
+             replace_sm |
+             submit_multi |
+             submit_sm
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+
+
+Removes ``Num`` requests from the rear of the queue.  Returns  the  list of
+requests removed (last first).  If there are no enough requests on the queue,
+``Reqs`` may contain less elements than ``Num``.  If the queue is empty an
+empty list is returned.
+
+If ``Num`` is not specified, 1 request will be removed.
+
+Notice that the returned requests will be removed from the queue and not
+processed.
+
+
+= LOG EXPORTS =
+
+Log related exports.   Please refer to **smpp_log_mgr(3)** for greater details.
+
+
+== add_log_handler(SrvRef, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see smpp_log_mgr:add_handler/3
+
+
+Adds a new log handler to the ESME log manager.  The event handler must be
+implemented as a gen_event callback  module, see **smpp_log_mgr(3)**.
+
+``SrvRef`` is the name or the process id of the ESME.
+
+
+== delete_log_handler(SrvRef, Handler, Args) -> Result ==
+
+: Types
+ : Handler, Args, Result -- see smpp_log_mgr:delete_handler/3
+
+
+Deletes a log handler from the ESME log manager, see **smpp_log_mgr(3)**.
+
+
+== swap_log_handler(SrvRef, {Handler1, Args}, {Handler2, Args}) -> Result ==
+
+: Types
+ : Handler1, Args1, Handler2, Args2, Result -- see smpp_log_mgr:swap_handler/3
+
+
+Replaces an old log handler with a new log handler in the ESME log manager.  The
+configuration from the old handler is passed to the second handler and used
+as default if not defined.
+
+
+= RPS EXPORTS =
+
+RPS (Requests Per Second) exports.
+
+
+== pause(SrvRef) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+
+
+Pauses processing queued messages.  Requests in the queue are kept until
+``resume/1`` is called.  Requests sent using ``bind_receiver/5``,
+``bind_transceiver/5``, ``bind_transmitter/5``, ``broadcast_sm/3``,
+``cancel_broadcast_sm/3``, ``cancel_sm/3``, ``data_sm/3``,
+``query_broadcast_sm/3``, ``query_sm/3``, ``replace_sm/3``, ``submit_multi/3``,
+``submit_sm/3`` and ``unbind/1`` are not affected.
+
+Note that this function call is synchronous and only returns after the ESME
+has been paused.
+
+
+== resume(SrvRef) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+
+
+Asynchronous call to resume processing of queued messages at the configured
+rate (see ``rps_max/1``).
+
+
+== rps(SrvRef) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Rps = int()
+
+
+Returns the calculated Requests Per Second.  It may be different than the
+configured maximum RPS returned by ``rps_max``.  Notice that requests sent
+using ``bind_receiver/5``, ``bind_transceiver/5``, ``bind_transmitter/5``,
+``broadcast_sm/3``, ``cancel_broadcast_sm/3``, ``cancel_sm/3``, ``data_sm/3``,
+``query_broadcast_sm/3``, ``query_sm/3``, ``replace_sm/3``, ``submit_multi/3``,
+``submit_sm/3`` and ``unbind/1`` are not counted.
+
+This function counts the actual number of requests processed during one second.
+
+
+== rps_avg(SrvRef) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Rps = int()
+
+
+Returns the calculated average Requests Per Second since last resume or RPS
+update.  It may be different than the configured maximum RPS returned by
+``rps_max``.  Notice that requests sent using ``bind_receiver/5``,
+``bind_transceiver/5``, ``bind_transmitter/5``, ``broadcast_sm/3``,
+``cancel_broadcast_sm/3``, ``cancel_sm/3``, ``data_sm/3``,
+``query_broadcast_sm/3``, ``query_sm/3``, ``replace_sm/3``, ``submit_multi/3``,
+``submit_sm/3`` and ``unbind/1`` are not counted.
+
+
+== rps_max(SrvRef) -> Rps ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Rps = int()
+
+
+Returns the current configured value for the maximun number of requests per
+second.
+
+
+== rps_max(SrvRef, Rps) -> ok ==
+
+: Types
+ : SrvRef = Name | {Name, Node} | {global, Name} | pid()
+ : Rps = int()
+
+
+Sets the max number of requests per second to ``Rps``.
+
+
+= CALLBACK EXPORTS =
+
+A module implementing this behaviour must export these functions.  Leaving a
+callback undefined crashes the entire ESME whenever that particular function is
+called.
+
+
+== init(Args) -> Result ==
+
+: Types
+ : Args = term()
+
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== terminate(Reason, St) -> ok ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_call(Req, From, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_cast(Req, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on
+this callback.
+
+
+== handle_info(Info, St) -> Result ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on this
+callback.
+
+
+== code_change(OldVsn, St, Extra) -> {ok, NewSt} ==
+
+Refer to OTP **gen_server** behaviour documentation for greater details on this
+callback.
+
+
+== handle_accept(Addr, From, St) -> Result ==
+
+: Types
+ : Addr = ip_address()
+ : Port = int()
+ : From = term()
+ : St = term()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = ok | {error, RejectReason}
+ : Timers = timers_smpp()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+Sends an accept request to the callback module.  ``Addr`` is the IP address of
+the other peer.  If the incoming connection is accepted ``Reply`` must be the
+atom  ``ok``.  If ``{error, RejectReason}`` is returned, the connection is
+rejected and the session is terminated with ``RejectReason``.
+
+After the connection is accepted the ESME stops listening and moves the
+SMPP session to open state.  If an outbind request arrives, the callback
+``handle_outbind/3`` will be called.
+
+
+== handle_alert_notification(Pdu, St) -> Result ==
+
+: Types
+ : Pdu = pdu()
+ : From = term()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+Forwards alert_notification operations (from the peer SMSCs) to the callback
+module.
+
+
+== handle_closed(Reason, St) -> Result ==
+
+: Types
+ : Reason = term()
+ : CmdStatus = int()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+This function is called whenever the underlying session is closed.  This
+function is always called when a session terminates, this also applies if the
+session is closed by the function ``close/1``.
+
+If ``{noreply, NewSt}`` or ``{noreply, NewSt, Timeout}`` is returned the ESME
+continues running.  The programmer must explicitly open and bind again (or
+recover the listening session).  If this function returns
+``{stop, Reason, NewSt}`` the ESME will exit with ``Reason``.
+
+Notice that the ESME is paused when the session is closed.  After binding
+back again, it is necessary to call ``resume/1`` if desired.
+
+
+== handle_data_sm(Pdu, From, St) -> Result ==
+
+== handle_deliver_sm(Pdu, From, St) -> Result ==
+
+: Types
+ : Pdu = pdu()
+ : From = term()
+ : St = term()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = {ok, Params} | {error, CmdStatus}
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+ : CmdStatus = int()
+
+
+Forwards //data_sm// and //deliver_sm// operations (from the peer SMSCs) to the
+callback ESME.
+
+The ``Params`` included in the response are used to construct the response
+PDU.  If ``{error, CmdStatus}`` is returned, an error response PDU
+with ``CmdStatus`` command_status will be sent back to the other peer.
+
+
+== handle_outbind(Pdu, St) -> Result ==
+
+: Types
+ : Pdu = pdu()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+
+
+Forwards an outbind operation (from the peer MC) to the callback module.
+
+
+== handle_req(Req, Args, Ref, St) -> Result ==
+
+: Types
+ : Req = {CmdName, Params}
+ : CmdName = broadcast_sm |
+             cancel_broadcast_sm |
+             cancel_sm |
+             data_sm |
+             query_broadcast_sm |
+             query_sm |
+             replace_sm |
+             submit_multi |
+             submit_sm
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Args = term()
+ : Ref = ref()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : NewSt = term()
+ : Timeout = int()
+ : Reason = term()
+
+
+This callback is called when the request ``Req`` is submitted to the other
+peer.  ``Ref`` is the reference of the request that can be later used to
+match the response arriving in ``handle_resp/3``.
+
+
+== handle_resp(Resp, Ref, St) -> Result ==
+
+: Types
+ : Resp = {ok, PduResp} | {error, Reason}
+ : PduResp = pdu()
+ : Reason = {command_status, CmdStatus} | term()
+ : CmdStatus = int()
+ : Ref = ref()
+ : St = term()
+ : Result = {noreply, NewSt} | {noreply, NewSt, Timeout} | {stop, Reason, NewSt}
+ : NewSt = term()
+ : Timeout = int()
+ : Reason = term()
+
+
+This callback is called when the response ``Resp`` associated to the request
+with reference ``Ref`` arrives.  SMPP related errors are returned as tuples
+with the format ``{command_status, CmdStatus}``.  If an unexpected error ocurrs
+``Reason`` will be a term indicating the failure reason.
+
+== handle_unbind(Pdu, From, St) -> Result ==
+
+: Types
+ : Pdu = pdu()
+ : Result = {reply, Reply, NewSt} |
+            {reply, Reply, NewSt, Timeout} |
+            {noreply, NewSt} |
+            {noreply, NewSt, Timeout} |
+            {stop, Reason, Reply, NewSt} |
+            {stop, Reason, NewSt}
+ : Reply = ok | {error, CmdStatus}
+ : Error = int()
+ : Timeout = int()
+ : NewSt = term()
+ : Reason = term()
+ : CmdStatus = int()
+
+
+This callback forwards an unbind request (issued by the peer MC) to the callback
+module.
+
+If the atom ``ok`` is returned an unbind_resp with a ESME_ROK command_status is
+sent to the peer and the session moves to unbound state.  Return
+``{error, CmdStatus}`` to send an erroneous PDU back to the peer and remain
+in the current bound state.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)
+
+%%% -*- mode:t2t -*-

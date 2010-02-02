@@ -1,0 +1,126 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= BEHAVIOUR =
+
+This module implements the ``gen_event`` behaviour.
+
+
+= DESCRIPTION =
+
+The ``tty_log_hlr`` displays SMPP PDUs on the standard output or alternatively
+to a file.  The exact format is controlled by the user, defining the format
+fun.  The default format displays the PDU as a proplist.
+
+The ``tty_log_hlr`` was designed for debugging purposes.  PDUs can be pretty
+printed or filtered using the optional ``format`` and ``filter`` fun arguments.
+
+During runtime you may need to inspect //deliver_sm// operations originated by
+a given //source_addr//.  It is easy to dump this information to a file or to
+the standard output by installing a new ``tty_log_hlr`` handler.
+
+```
+    SourceAddr = "1234".
+    Filter = fun(BinaryPdu) ->
+                 case pdu_syntax:command_id(BinaryPdu) of
+                     ?COMMAND_ID_DELIVER_SM ->
+                         case operation:unpack(BinaryPdu) of
+                              {ok, Pdu} ->
+                                  case operation:get_param(source_addr, Pdu) of
+                                      {ok, SourceAddr} ->
+                                          true;
+                                      _Otherwise ->
+                                          false
+                                  end;
+                              Error ->
+                                  false
+                         end;
+                     _CommandId ->
+                         false
+                 end
+             end.
+    log_mgr:add_handler(Pid, tty_log_hlr, [{filter, Filter}]).
+```
+
+By default the information sent to the standard output is the complete
+PDU parameters a as proplist, it would be very easy to change this format and
+display the PDU in hex format by simply redefining the format function:
+
+```
+    Format = fun(BinaryPdu) -> binary:to_hexlist(BinaryPdu) end.
+    log_mgr:swap_handler(Pid, tty_log_hlr, [{format, Format}]).
+```
+
+
+= INIT ARGS =
+
+The tty logging handler takes a list of optional arguments in the ``init/1``
+function.
+
+: Types
+ : Args = [Arg]
+ : Arg = {file, File} | {filter, Filter} | {format, Format}
+ : File = string()
+ : Filter = fun(Pdu) -> bool()
+ : Format = fun(Pdu) -> term()
+ : Pdu = binary()
+
+
+- ``File``
+  the log file name.  If no file name is given the information is printed in the
+  standard output.
+
+- ``Filter``
+  is a predicate the binary PDUs must satisfy in order to be logged.  The
+  default predicate displays only PDUs with a ``command_status/1`` different
+  than ``ESME_ROK`` and it is defined as follows:
+
+```
+-define(FILTER,
+        fun(BinaryPdu) ->
+                case pdu_syntax:command_status(BinaryPdu) of
+                    0 ->
+                        false;
+                    _CommandStatus ->
+                        true
+                end
+        end).
+```
+
+  Note that instead of this default filter, the filter of the old handler will
+  be used instead as default when ``log_mgr:swap_handler/3`` is called.
+
+- ``Format``
+  is a fun that gets the binary PDU as input and returns the term sent to the
+  output.  The default formatting fun is defined as follows:
+
+```
+-define(FORMAT,
+        fun(BinaryPdu) ->
+                case operation:unpack(BinaryPdu) of
+                    {ok, PduDict} ->
+                        operation:to_list(PduDict);
+                    Error ->
+                        Error
+                end
+        end).
+```
+
+  Note that instead of this default format fun, the formatting fun of the old
+  handler will be used instead as default when ``log_mgr:swap_handler/3`` is
+  called.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

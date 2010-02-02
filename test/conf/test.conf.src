@@ -1,0 +1,20 @@
+{paths, ["%TEST_DIR%/stubs", "%TEST_DIR%/../../common_lib/ebin"]}.
+{log_args, [{file, "%TEST_DIR%/log/disk_log"}]}.
+{file, ["%TEST_DIR%/test.dqueue"]}.
+{esme_id, "admin"}.
+{esme_pwd, "admin"}.
+{retry_time, 3000}.
+{short_sm, "hello world"}.
+{long_sm, "Lorem ipsum dolor sit amet, consectetur adipis cing elit. Ut tristique risus ut elit. Nullam id nulla vitae odio pharetra gravida. Nunc nisl. Integer porttitor vehicula odio. Praesent justo. Donec id."}.
+{deliver_sm, [{"0123456789", "hello world"},
+              {"0234567891", "bye bye"},
+              {"0345678912", "foo bar baz"}]}.
+{data_sm, [{"0123456789", "Lorem ipsum dolor sit amet, consectetur adipis cing elit. Ut tristique risus ut elit. Nullam id nulla vitae odio pharetra gravida. Nunc nisl. Integer porttitor vehicula odio. Praesent justo. Donec id."},
+           {"0234567891", "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris arcu. Curabitur eget diam. Donec nisl sapien, euismod vel, vestibulum a, malesuada vitae nullam."},
+           {"0345678912", "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris arcu. Curabitur eget diam. Donec nisl sapien, euismod vel, vestibulum a, malesuada vitae nullam"}]}.
+{min_operations, 1000}.
+{max_operations, 10000}.
+{max_time, 10000}.
+{max_size_diff, 1.01}.
+%{tpl_cases, [{receiver, [gen_mc_session]}]}.
+%{tp_cases, []}.

@@ -1,0 +1,188 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= BEHAVIOUR =
+
+This module implements the ``gen_event`` behaviour.
+
+
+= DESCRIPTION =
+
+The ``disk_log_hlr`` stores SMPP PDUs on disk in tuples with the format
+``{Now, Format(Pdu)}``. ``Now`` is the timestamp as returned by the
+BIF ``now()``. ``Pdu`` is the SMPP PDU in binary format and ``Format`` is the
+formatting fun.
+
+The format of the term stored by the disk log can be redefined using a custom
+formatting function.
+
+This module provides also a set of functions for inspecting the contents of
+the disk log:  ``count/3``,  ``match/3`` and ``match/4``.
+
+The ``disk_log_hrl`` was designed to store SMPP operations on disk.  By default
+PDUs are efficiently stored in binary format.  As mentioned earlier storage
+format can be easily customizable with the optional format fun paramerter.  It
+is also possible to filter the set of PDUs to be stored by means of the filter
+predicate.  For example, to store only //submit_sm// and //deliver_sm// PDUs on
+disk do:
+
+```
+    Filter = fun(BinaryPdu) ->
+                 case pdu_syntax:command_id(BinaryPdu) of
+                     ?COMMAND_ID_SUBMIT_SM ->
+                         true;
+                     ?COMMAND_ID_DELIVER_SM ->
+                         true;
+                     _CommandId ->
+                         false
+                 end
+             end.
+    log_mgr:add_handler(Pid, disk_log_hlr, [{filter, Filter}]).
+```
+
+By default every PDU operation other than //enquire_link// and
+//enquire_link_resp// is logged.
+
+
+= INIT ARGS =
+
+The disk logging handler takes a list of optional arguments in the ``init/1``
+function.
+
+: Types
+ : Args = [Arg]
+ : Arg = {file, File} |
+         {filter, Filter} |
+         {format, Format} |
+         {name, Name} |
+         {size, Size}
+ : File = string()
+ : Filter = fun(Pdu) -> bool()
+ : Format = fun(Pdu) -> term()
+ : Pdu = binary()
+ : Name = atom()
+ : Size = int()
+
+
+- ``File``
+  the disk log file name.  Default is ``"smpp_log"``
+
+- ``Filter``
+  is a predicate the binary PDUs must satisfy in order to be logged.  The
+  default predicate is defined as follows:
+
+```
+-define(FILTER,
+        fun(BinaryPdu) ->
+                case pdu_syntax:command_id(BinaryPdu) of
+                    ?COMMAND_ID_ENQUIRE_LINK ->
+                        false;
+                    ?COMMAND_ID_ENQUIRE_LINK_RESP ->
+                        false;
+                    _CommandId ->
+                        true
+                end
+        end).
+```
+
+  Note that instead of this default filter, the filter of the old handler will
+  be used instead as default when ``log_mgr:swap_handler/3`` is called.
+
+- ``Name``
+  is the disk log name.  Default is ``smpp_log``.
+
+- ``Format``
+  is a fun that gets the binary PDU as input and returns the term sent to the
+  disk log.  The default formatting fun is defined as follows:
+
+```
+-define(FORMAT, fun(BinaryPdu) -> BinaryPdu end).
+```
+
+  Note that instead of this default format fun, the formatting fun of the old
+  handler will be used instead as default when ``log_mgr:swap_handler/3`` is
+  called.
+
+- ``Size``
+  a pair ``{MaxNoBytes, MaxNoFiles}`` as defined in ``disk_log:open/1``.  The
+  default size is ``{10485760, 20}`` (10M x 20).  Assuming 256 bytes for each
+  PDU, individual log files of the wrap disk log can store up to 40960 PDUs. By
+  having 20 files on the wrap log, the total PDU capacity, before wrapping to
+  the first log, is about 819200 PDUs.
+
+
+= EXPORTS =
+
+Exported functions.
+
+
+== count(Name, Date, Pred) -> int() ==
+
+: Types
+ : Name = atom()
+ : Date = any | {from, Time} | {until, Time} | {lapse, FromTime, ToTime}
+ : Time = {{Year, Month, Day}, {Hour, Minutes, Seconds}}
+ : FromTime = Time
+ : ToTime = Time
+ : Pred = fun(Pdu) -> bool()
+ : Pdu = binary()
+
+
+This function counts logged PDUs matching the given ``Date`` and ``Pred``.
+
+- ``Date``
+  can be the atom ``any`` or the tuples ``{from, Time}``, ``{until, Time}`` or
+  ``{lapse, FromTime, ToTime}``.
+
+- ``Pred``
+  is a predicate the binary PDUs must satisfy in order to be matched.
+
+
+== match(Name, Date, Pred) -> Result ==
+
+== match(Name, Date, Pred, Continuation) -> Result ==
+
+: Types
+ : Name = atom()
+ : Date = any | {from, Time} | {until, Time} | {lapse, FromTime, ToTime}
+ : Time = {{Year, Month, Day}, {Hour, Minutes, Seconds}}
+ : FromTime = Time
+ : ToTime = Time
+ : Pred = fun(Pdu) -> bool()
+ : Pdu = binary()
+ : Continuation = start | cont()
+ : Result = {Continuation2, List} |
+            {Continuation2, List, Badbytes} |
+            eof |
+            {error, Reason}
+ : List = [{Now, Pdu}]
+ : Now = {MegaSecs, Secs, Microsecs}
+
+
+This function returns the list of logged PDUs matching the given ``Date`` and
+``Pred``.
+
+- ``Date``
+  can be the atom ``any`` or the tuples ``{from, Time}``, ``{until, Time}`` or
+  ``{lapse, FromTime, ToTime}``.
+
+- ``Pred``
+  is a predicate the binary PDUs must satisfy in order to be matched.
+
+This function uses ``disk_log:chunk/2`` to read the terms appended to the disk
+log.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

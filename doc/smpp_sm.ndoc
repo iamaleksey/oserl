@@ -1,0 +1,318 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= DESCRIPTION =
+
+Short Message library module  groups utility functions for manipulating short
+messages.
+
+
+= EXTERNAL EXPORTS =
+
+== add_ie(Params, Ie) -> NewParams ==
+
+: Types
+ : Params = [{ParamName, ParamVal}]
+ : Ie = string()
+ : NewParams = Params
+
+
+Adds an Information Element to the User Data Header.  If needed the
+User Data Header Indicator is set.  A ``NewParams`` is returned.
+
+
+== chop_udh(Data) -> {Udh, Rest} ==
+
+: Types
+ :  Data = string()
+ :  Rest = string()
+ :  Udh = string()
+
+
+Chops the User Data Header from the User Data of a short message.
+
+
+== destination_port(Pdu) -> DestinationPort ==
+
+: Types
+ : Pdu = pdu()
+ : DestinationPort = int()
+
+
+Returns the ``DestinationPort`` of an Application Port Addressed Short Message.
+
+The function will fail if ``Pdu`` does not correspond with a valid
+Application Port Addressed message.
+
+
+== ie(Iei, Udh) -> Ie ==
+
+: Types
+ : Iei = int()
+ : Udh = string()
+ : Ie = string()
+
+
+Returns the Information Element in the User Data Header identified by
+``Iei``.  If no IE found for the given id the function crashes.
+
+
+== join_user_data(Segments) -> {Data, RefNum} ==
+
+: Types
+ : Segments = [Segment]
+ : Segment = string()
+ : Data = string()
+ : RefNum = int()
+
+
+Joins the ``Segments`` of a concatenated message.
+
+This functions assumes that no other IE than concatenation IE is present
+in the segments UDH, otherwise resulting ``Data`` will be corrupted.
+
+
+== message_user_data(Pdu) -> UserData ==
+
+: Types
+ : Pdu = pdu()
+ : UserData = {ParamName, ParamVal}
+ : ParamName = short_message | message_payload
+ : ParamVal = undefined | string()
+
+
+Gets the message user data from a PDU.  The message user data may came
+in the ``short_message`` or in the ``message_payload`` parameter.
+
+
+== originator_port(Pdu) -> OriginatorPort ==
+
+: Types
+ : Pdu = pdu()
+ : OriginatorPort = int()
+
+
+Returns the ``OriginatorPort`` of an Application Port Addressed Short Message.
+
+The function will fail if ``Pdu`` does not correspond with a valid Application
+Port Addressed message.
+
+
+== pack(UserData, DataCoding) -> PackedUserData ==
+
+: Types
+ : UserData = list()
+ : DataCoding = int()
+ : PackedUserData = list()
+
+
+Returns the ``PackedUserData`` according to ``DataCoding`` and the input
+``UserData``.
+
+
+| PackedUserData | DataCoding | UserData |
+| 7 bit | 00x1xx00 | 8 bit string |
+| 8 bit | 00x1xx01 | 8 bit string |
+| 16 bit | 00x1xx10 | 16 bit string |
+| 8 bit | 00x1xx11 | 8 bit string |
+| 8 bit | 00x0xxxx | 8 bit string |
+| 8 bit | 01000000..10111111 | 8 bit string |
+| 7 bit | 110xxxxx | 8 bit string |
+| 16 bit | 1110xxxx | 16 bit string |
+| 7 bit | 111100xx | 8 bit string |
+| 8 bit | 111101xx | 8 bit string |
+| 8 bit | 11111xxx | 8 bit |
+
+
+== port_addressing_8(Params, DestPort, OrigPort) -> NewParams ==
+
+: Types
+ : Data = string()
+ : DestPort = int()
+ : OrigPort = int()
+ : NewData = string()
+
+
+Adds application port addressing 8 bit address header to the message
+user data.
+
+
+== port_addressing_16(Params, DestPort, OrigPort) -> NewParams ==
+
+: Types
+ : Data = string()
+ : DestPort = int()
+ : OrigPort = int()
+ : NewData = string()
+
+
+Adds application port addressing 16 bit address header to the message
+user data.
+
+
+== reference_number(Pdu) -> RefNum ==
+
+: Types
+ : Pdu = pdu()
+ : RefNum = int()
+
+
+Returns the ``RefNum`` of a concatenated message.
+
+The function will fail if ``Pdu`` does not correspond with a valid
+concatenated message.
+
+
+== reply_addresses(Pdu) -> Params ==
+
+: Types
+ : Pdu = pdu()
+ : Params = [DestAddrTon | [DestAddrNpi | [DestinationAddr]]]
+ : DestAddrTon = {dest_addr_ton, int()}
+ : DestAddrNpi = {dest_addr_npi, int()}
+ : DestinationAddr = {destination_addr, string()}
+
+
+Creates reply addresses (``dest_addr_ton``, ``dest_addr_npi``,
+``destination_addr``, ``source_addr_ton``, ``source_addr_npi``
+and ``source_addr``) from the source address and destination address
+given in ``Pdu``.
+
+
+== reply_destination_address(Pdu) -> Params ==
+
+: Types
+ : Pdu = pdu()
+ : Params = [DestAddrTon | [DestAddrNpi | [DestinationAddr]]]
+ : DestAddrTon = {dest_addr_ton, int()}
+ : DestAddrNpi = {dest_addr_npi, int()}
+ : DestinationAddr = {destination_addr, string()}
+
+
+Creates destination address parameters (//ton//, //npi// and
+//addr//) from the source address parameters of a given ``Pdu``.
+
+
+== reply_source_address(Pdu) -> Params ==
+
+: Types
+ : Pdu = pdu()
+ : Params = [DestAddrTon | [DestAddrNpi | [DestinationAddr]]]
+ : DestAddrTon = {dest_addr_ton, int()}
+ : DestAddrNpi = {dest_addr_npi, int()}
+ : DestinationAddr = {destination_addr, string()}
+
+
+Creates source address parameters (//ton//, //npi// and
+//addr//) from the destination address parameters of a given
+``Pdu``.
+
+
+== split(Params, RefNum, ConcatenationMethod) -> ParamsList ==
+
+: Types
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : RefNum = int()
+ : ConcatenationMethod = udh | sar
+ : ParamsList = [Params]
+
+
+Returns a list with a ``Params`` for every segment of a concatenated short
+message.
+
+
+== split_user_data(Data, RefNum) -> Segments ==
+
+: Types
+ : Data = string()
+ : RefNum = int()
+ : Segments = [Segment]
+ : Segment = string()
+
+
+Splits the user ``Data`` into ``Segments`` for concatenation.
+Returned ``Segments`` have the appropriated UDH.
+
+This functions assumes that no UDH is present in ``Data``, if so
+resulting ``Segments`` will be corrupted.
+
+
+== total_segments(Pdu) -> TotalSegments ==
+
+: Types
+ : Pdu = pdu()
+ : TotalSegments = int()
+
+
+Returns the total number of segments on a concatenated message.
+
+The function will fail if ``Pdu`` does not correspond with a valid
+concatenated message.
+
+
+== unpack(PackedUserData, DataCoding) -> UserData ==
+
+: Types
+ : UserData = list()
+ : DataCoding = int()
+ : PackedUserData = list()
+
+
+Returns the ``UserData`` according to ``DataCoding`` and the input
+``PackedUserData``.
+
+| PackedUserData | DataCoding | UserData |
+| 7 bit | 00x1xx00 | 8 bit string |
+| 8 bit | 00x1xx01 | 8 bit string |
+| 16 bit | 00x1xx10 | 16 bit string |
+| 8 bit | 00x1xx11 | 8 bit string |
+| 8 bit | 00x0xxxx | 8 bit string |
+| 8 bit | 01000000..10111111 | 8 bit string |
+| 7 bit | 110xxxxx | 8 bit string |
+| 16 bit | 1110xxxx | 16 bit string |
+| 7 bit | 111100xx | 8 bit string |
+| 8 bit | 111101xx | 8 bit string |
+| 8 bit | 11111xxx | 8 bit |
+
+
+== udhi(Pdu) -> bool() ==
+
+: Types
+ : Pdu = pdu()
+
+
+Returns ``true`` if UDHI is set, ``false`` otherwise.
+
+
+== udhi(Params, Udhi) -> NewParams ==
+
+: Types
+ : Params = [{ParamName, ParamVal}]
+ : ParamName = atom()
+ : ParamVal = term()
+ : Udhi = bool()
+
+
+Sets ``Udhi`` in the ``esm_class`` parameter of given list. If ``Udhi`` is
+``true`` UDHI is set to 1, when ``false`` sets the UDHI to 0.
+
+If ``esm_class`` parameter was not defined, returned list includes this
+parameter with a value of ``ESM_CLASS_GSM_UDHI`` if and only ``Udhi`` is
+``true``, if ``Udhi`` is ``false`` ``esm_class`` will be left undefined.
+
+
+= SEE ALSO =
+
+%APPLICATION%(1)

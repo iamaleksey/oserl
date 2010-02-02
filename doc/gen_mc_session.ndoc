@@ -1,0 +1,353 @@
+%%outfile(%F)
+%APPLICATION%
+Version: %VSN%
+
+Authors: [Enrique Marcote enrique.marcote@erlang-consulting.com] [Miguel Rodriguez miguel.rodriguez@erlang-consulting.com]
+
+%%toc
+
+= MODULE =
+
+%%outfile(%F)
+
+
+= BEHAVIOUR =
+
+This module implements the ``gen_fsm`` behaviour.
+
+
+= DESCRIPTION =
+
+A generic MC SMPP session modeled as a FSM.
+
+Every SMPP session works over a single TCP/IP connection.  If the underlying
+connection is closed, the session is terminated.
+
+Session failures due to connection errors must be handled by the parent process.
+
+The following figure depicts the state transition diagram for ``%%outfile(%F)``.
+
+```
+ +-----------+
+ |  listen   |
+ +-----+-----+
+       |
+       | accept
+ +-----v-----+        outbind              +-----------+
+ |   open    +---------------------------->| outbound  |
+ +-----+-----+                             +-----+-----+
+       |                                         |
+       +--------------------+--------------------+
+       |                    |                    |
+       |bind_transceiver    |bind_transmitter    |bind_receiver
+ +-----v-----+        +-----v-----+        +-----v-----+
+ | bound_trx |        | bound_rx  |        | bound_tx  |
+ +-----+-----+        +-----+-----+        +-----+-----+
+       |                    |  unbind/           |
+       |                    |unbind_resp         |
+       |                    |                    |
+       |   unbind/          |          unbind/   |
+       | unbind_resp  +-----v-----+  unbind_resp |
+       +------------->|  unbound  |<-------------+
+                      +-----------+
+```
+
+
+The session implements a set of timers to trigger certain actions.  The tables
+below indicate the actions triggered by each timer depeding on the current
+state.
+
+
+**Session Init Timer**
+
+| listen | open | outbound | bound_rx | bound_tx | bound_trx | unbound |
+|        | exit |   exit   |          |          |           |         |
+
+
+**Inactivity Timer**
+
+| listen | open | outbound | bound_rx | bound_tx | bound_trx | unbound |
+|        |      |          | exit     | exit     | exit      |         |
+
+
+**Enquire Link Timer**
+
+When the enquire link timer expires an enquire_link PDU is sent to the other
+peer.  If the enquire link response does not arrive the session is dropped.
+
+
+**Response Timer**
+
+One response timer is started for each request.  On expiration, the request is
+considered unsuccessful.
+
+The timer associated to a request is stopped when the corresponding response
+arrives.
+
+
+= START/STOP EXPORTS =
+
+Start/Stop functions.
+
+
+== start_link(Mod, Opts) -> Result ==
+
+: Types
+ : Mod = atom()
+ : Opts = [Opt]
+ : Opt = {mc, McRef} |
+         {addr, Addr} |
+         {port, Port} |
+         {lsock, LSock} |
+         {timers, Timers} |
+         {log, Log}
+ : McRef = pid() | atom()
+ : Addr = ip_address()
+ : Port = int()
+ : LSock = socket()
+ : Timers = timers_smpp()
+ : Log = pid()
+ : Result = {ok, Pid} | ignore | {error, Error}
+ : Pid = pid()
+ : Error = term()
+
+
+Starts the SMPP session.  If ``Addr`` is defined, the session connects to
+``Addr`` and moves the session to open state.  Alternatively a listening
+socket ``LSock`` can be given.  In the later case, no connection attempt is
+issued and the session will wait until a new connection request arrives.  The
+``lsock`` option is useful in those situations where the MC listens for
+incoming connections from the peer ESMEs.  If the ``lsock`` option exists,
+options ``addr`` and ``port`` are ignored.  Once a connection request arrives
+the callback ``handle_accept/2`` is called.
+
+If the connection fails an error is returned and the SMPP session is terminated.
+
+The ``mc`` option contains the name or the process id of the MC (owner of
+the session).  If not specified, the calling process is considered the session
+owner.
+
+By default the port 2777 is used.  This value can be modified with the ``port``
+option.
+
+``Timers`` is a ``timers_smpp`` record.  If not specified the
+``?DEFAULT_TIMERS_SMPP`` are assumed.  Refer to **oserl.hrl** for more details
+on the ``timers_smpp`` record definition and default values.
+
+
+== stop(SessionRef) -> ok ==
+
+== stop(SessionRef, Reason) -> ok ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Ref = ref()
+
+
+Stops the SMPP session with ``Reason``.  If ``Reason`` is not defined ``normal``
+is used.
+
+
+= ASYNC SMPP EXPORTS =
+
+Asynchronous ESME SMPP operations.
+
+
+= SMPP EXPORTS =
+
+MC SMPP operations.
+
+
+== alert_notification(SessionRef, Params) -> ok ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+
+
+Issues an //alert_notification// operation.  This function returns ``ok``.
+
+
+== data_sm(SessionRef, Params) -> Ref ==
+
+== deliver_sm(SessionRef, Params) -> Ref ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+ : Ref = ref()
+
+
+Issues a //data_sm// and //deliver_sm// operations asynchronously.  This
+function returns immediately the reference of the response.  The response will
+be received in the ``handle_resp/3`` callback.
+
+
+== outbind(SessionRef, Params) -> ok ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+
+
+Issues an //outbind// operation.  This function returns ``ok``.
+
+
+== unbind(SessionRef) -> Ref ==
+
+: Types
+ : SessionRef = Name | {Name, Node} | {global, Name} | pid()
+ : Ref = ref()
+
+
+Issues an //unbind// operation asynchronously.  This function
+returns immediately the reference of the response.  The response will be
+received in the ``handle_resp/3`` callback.
+
+
+= CALLBACK FUNCTIONS =
+
+The following functions should be exported from a ``gen_mc_session`` callback
+module.
+
+A module implementing this behaviour must export these functions.  Leaving a
+callback undefined crashes the entire session (when that particular function is
+called).
+
+
+== handle_accept(Mc, Addr) -> Result ==
+
+: Types
+ : Mc = pid()
+ : Addr = ip_address()
+ : Result = ok | {error, Reason}
+ : Reason = term()
+
+
+When a new connection arrives to a listening session this callback is called
+to notify a new connection attempt from ``Addr``.  If the connection is
+accepted the atom  ``ok`` must be returned and the session will move to
+open state.  If the tuple ``{error, Reason}`` is returned, the connection is
+dropped and the session is terminated with ``Reason``.
+
+
+== handle_bind(Mc, {CmdName, Pdu}) -> Result ==
+
+: Types
+ : Mc = pid()
+ : CmdName = bind_receiver | bind_transmitter | bind_transceiver
+ : Pdu = pdu()
+ : Result = {ok, Params} | {error, Error}
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+ : Error = int()
+
+
+Forwards //bind_receiver//, //bind_transmitter// and //bind_transceiver//
+operations (from the peer ESME) to the callback MC.
+
+The ``Params`` included in the response is used to construct the bind response
+PDU.   To return a ``command_status`` other than ESME_ROK in the response PDU,
+the callback must return ``{error, Error}``, where ``Error`` is the
+desired ``command_status`` error code.
+
+``Mc`` is the MC process id.
+
+
+== handle_enquire_link(Mc, Pdu) -> ok ==
+
+: Types
+ : Mc = pid()
+ : Pdu = pdu()
+
+
+Forwards //enquire_link// operations (from the peer ESME) to the callback
+module.
+
+This callback is issued to ensure that the callback module is not deadlocked.
+The atom ``ok`` must be returned, otherwise the session will be be dropped.
+
+``Mc`` is the MC process id.
+
+
+== handle_operation(Mc, {CmdName, Pdu}) -> Result ==
+
+: Types
+ : Mc = pid()
+ : CmdName = broadcast_sm |
+             cancel_broadcast_sm |
+             cancel_sm |
+             data_sm |
+             query_broadcast_sm |
+             query_sm |
+             replace_sm |
+             submit_multi |
+             submit_sm
+ : Pdu = pdu()
+ : Result = {ok, Params} | {error, Error}
+ : Params = [{ParamName, ParamValue}]
+ : ParamName = atom()
+ : ParamValue = term()
+ : Error = int()
+
+
+Forwards //broadcast_sm//, //cancel_broadcast_sm//, //cancel_sm//,
+//query_broadcast_sm//, //query_sm//, //replace_sm//, //submit_multi//,
+//submit_sm// and //data_sm// operations (from the peer ESME) to the callback
+MC.
+
+The ``Params`` included in the response is used to construct the response PDU.
+To return a ``command_status`` other than ESME_ROK in the response PDU,
+the callback must return ``{error, Error}``, where ``Error`` is the
+desired ``command_status`` error code.
+
+``Mc`` is the MC process id.
+
+
+== handle_resp(Mc, Resp, Ref) -> ok ==
+
+: Types
+ : Mc = pid()
+ : Resp = {ok, PduRsp} | {error, CmdStatus}
+ : PduRsp = pdu()
+ : CmdStatus = int()
+ : Ref = ref()
+
+
+Delivers a response to the callback module.  ``Ref`` is the reference as
+returned by the asynchronous requests and ``Resp`` is either ``{ok, PduResp}``
+or ``{error, CmdStatus}``.
+
+``MC`` is the MC process id.
+
+
+
+== handle_unbind(Mc, Pdu) -> ok | {error, Error} ==
+
+: Types
+ : Mc = pid()
+ : Pdu = pdu()
+ : Error = int()
+
+
+This callback forwards an unbind request (issued by a peer ESME) to the
+MC.
+
+If ``ok`` is returned an unbind_resp with a ESME_ROK
+``command_status`` is sent to the ESME and the session moves into the unbound
+state.  When ``{error, Error}`` is returned, the response PDU sent will have
+an ``Error`` ``command_status`` and the session will remain on it's current
+bound state (``bound_rx``, ``bound_tx`` or ``bound_trx``).
+
+``Mc`` is the MC process id.
+
+= SEE ALSO =
+
+%APPLICATION%(1)

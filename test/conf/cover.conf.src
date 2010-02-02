@@ -1,0 +1,2 @@
+{level, details}.
+{incl_mods, [%MODULES%]}.
