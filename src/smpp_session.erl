@@ -35,7 +35,7 @@
 -export([congestion/3, connect/1, listen/1]).
 
 %%% SOCKET LISTENER FUNCTIONS EXPORTS
--export([wait_accept/3, wait_recv/3, wait_recv/4, recv_loop/4]).
+-export([wait_accept/3, wait_recv/3, wait_recv/4]).
 
 %% TIMER EXPORTS
 -export([cancel_timer/1, start_timer/2]).
@@ -149,26 +149,9 @@ wait_recv(Pid, Sock, Buffer, Log) ->
         {ok, Input} ->
             L = timer:now_diff(now(), Timestamp),
             B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
-            case recv_loop(Pid, Sock, B, Log) of
-                {ok, NewBuffer} ->
-                    ?MODULE:wait_recv(Pid, Sock, NewBuffer, Log);
-                RecvError ->
-                    gen_fsm:send_all_state_event(Pid, RecvError)
-            end;
+            ?MODULE:wait_recv(Pid, Sock, B, Log);
         {error, Reason} ->
             gen_fsm:send_all_state_event(Pid, {sock_error, Reason})
-    end.
-
-
-recv_loop(Pid, Sock, Buffer, Log) ->
-    case gen_tcp:recv(Sock, 0, 0) of
-        {ok, Input} ->                    % Some input waiting already
-            B = handle_input(Pid, concat_binary([Buffer, Input]), 0, 1, Log),
-            ?MODULE:recv_loop(Pid, Sock, B, Log);
-        {error, timeout} ->               % No data inmediately available
-            {ok, Buffer};
-        {error, Reason} ->
-            {sock_error, Reason}
     end.
 
 
