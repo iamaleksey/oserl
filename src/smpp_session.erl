@@ -122,6 +122,7 @@ wait_accept(Pid, LSock, Log) ->
                 true ->
                     wait_recv(Pid, Sock, Log);
                 false ->
+                    gen_tcp:close(Sock),
                     ?MODULE:wait_accept(Pid, LSock, Log)
             end;
         {error, Reason} ->
@@ -133,8 +134,7 @@ handle_accept(Pid, Sock) ->
     ok = gen_tcp:controlling_process(Sock, Pid),
     case inet:peername(Sock) of
         {ok, {Addr, _Port}} ->
-            gen_fsm:send_event(Pid, {accept, Sock, Addr}),
-            true;
+            gen_fsm:sync_send_event(Pid, {accept, Sock, Addr});
         {error, _Reason} ->  % Most probably the socket is closed
             false
     end.

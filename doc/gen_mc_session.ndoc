@@ -234,7 +234,7 @@ When a new connection arrives to a listening session this callback is called
 to notify a new connection attempt from ``Addr``.  If the connection is
 accepted the atom  ``ok`` must be returned and the session will move to
 open state.  If the tuple ``{error, Reason}`` is returned, the connection is
-dropped and the session is terminated with ``Reason``.
+dropped and the session continues accepting connections.
 
 
 == handle_bind(Mc, {CmdName, Pdu}) -> Result ==

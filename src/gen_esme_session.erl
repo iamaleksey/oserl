@@ -56,11 +56,11 @@
 %%% INIT/TERMINATE EXPORTS
 -export([init/1, terminate/3]).
 
-%%% ASYNC REQUEST EXPORTS
+%%% GEN_FSM STATE EXPORTS
 -export([bound_rx/2,
          bound_tx/2,
          bound_trx/2,
-         listen/2,
+         listen/3,
          open/2,
          outbound/2,
          unbound/2]).
@@ -107,13 +107,7 @@ behaviour_info(_Other) ->
 %%%-----------------------------------------------------------------------------
 start_link(Mod, Opts) ->
     Esme = proplists:get_value(esme, Opts, self()),
-    case proplists:get_value(lsock, Opts) of
-        undefined ->
-            start_connect(Mod, Esme, Opts);
-        LSock ->
-            start_listen(Mod, Esme, [{lsock, LSock} | Opts])
-    end.
-
+    gen_fsm:start_link(?MODULE, [Mod, Esme, Opts], []).
 
 stop(FsmRef) ->
     stop(FsmRef, normal).
@@ -197,23 +191,31 @@ init([Mod, Esme, Opts]) ->
     Log = proplists:get_value(log, Opts),
     case proplists:get_value(lsock, Opts) of
         undefined ->
-            init_open(Mod, Esme, proplists:get_value(sock, Opts), Timers, Log);
+            init_open(Mod, Esme, Opts, Timers, Log);
         LSock ->
             init_listen(Mod, Esme, LSock, Timers, Log)
     end.
 
-init_open(Mod, Esme, Sock, Tmr, Log) ->
-    Self = self(),
-    Pid = spawn_link(smpp_session, wait_recv, [Self, Sock, Log]),
-    {ok, open, #st{esme = Esme,
-                   mod = Mod,
-                   log = Log,
-                   sock = Sock,
-                   sock_ctrl = Pid,
-                   req_tab = smpp_req_tab:new(),
-                   timers = Tmr,
-                   session_init_timer = smpp_session:start_timer(Tmr, session_init_timer),
-                   enquire_link_timer = smpp_session:start_timer(Tmr, enquire_link_timer)}}.
+
+init_open(Mod, Esme, Opts, Tmr, Log) ->
+    case smpp_session:connect(Opts) of
+        {ok, Sock} ->
+            Self = self(),
+            Pid = spawn_link(smpp_session, wait_recv, [Self, Sock, Log]),
+            {ok, open, #st{esme = Esme,
+                           mod = Mod,
+                           log = Log,
+                           sock = Sock,
+                           sock_ctrl = Pid,
+                           req_tab = smpp_req_tab:new(),
+                           timers = Tmr,
+                           session_init_timer =
+                               smpp_session:start_timer(Tmr, session_init_timer),
+                           enquire_link_timer =
+                               smpp_session:start_timer(Tmr, enquire_link_timer)}};
+        ConnError ->
+            ConnError
+    end.
 
 
 init_listen(Mod, Esme, LSock, Tmr, Log) ->
@@ -309,17 +311,16 @@ bound_trx(R, St) ->
     {next_state, bound_trx, St}.
 
 
-listen({accept, Sock, Addr}, St) ->
+listen({accept, Sock, Addr}, _From, St) ->
     case (St#st.mod):handle_accept(St#st.esme, Addr) of
         ok ->
             TI = smpp_session:start_timer(St#st.timers, session_init_timer),
             TE = smpp_session:start_timer(St#st.timers, enquire_link_timer),
-            {next_state, open, St#st{sock = Sock,
-                                     session_init_timer = TI,
-                                     enquire_link_timer = TE}};
-        {error, Reason} ->
-            gen_tcp:close(Sock),
-            {stop, Reason, St}
+            {reply, true, open, St#st{sock = Sock,
+                                      session_init_timer = TI,
+                                      enquire_link_timer = TE}};
+        {error, _Reason} ->
+            {reply, false, listen, St}
     end.
 
 
@@ -510,39 +511,6 @@ handle_sync_event({CmdId, Params}, From, Stn, Std) ->
 %%%-----------------------------------------------------------------------------
 code_change(_OldVsn, Stn, Std, _Extra) ->
     {ok, Stn, Std}.
-
-%%%-----------------------------------------------------------------------------
-%%% START FUNCTIONS
-%%%-----------------------------------------------------------------------------
-start_connect(Mod, Esme, Opts) ->
-    case smpp_session:connect(Opts) of
-        {ok, Sock} ->
-            Args = [Mod, Esme, [{sock, Sock} | Opts]],
-            case gen_fsm:start_link(?MODULE, Args, []) of
-                {ok, Pid} ->
-                    case gen_tcp:controlling_process(Sock, Pid) of
-                        ok ->
-                            {ok, Pid};
-                        _CtrlError ->
-                            % Session started but could not assign the socket
-                            % to it, most probably because it is closed.
-                            % Close it to make sure and force handle_closed.
-                            %
-                            % If we return an error here, we will be having
-                            % an unexpected handle_closed call later.
-                            gen_tcp:close(Sock),
-                            {ok, Pid}
-                    end;
-                SessionError ->
-                    gen_tcp:close(Sock),
-                    SessionError
-            end;
-        ConnError ->
-            ConnError
-    end.
-
-start_listen(Mod, Esme, Opts) ->
-    gen_fsm:start_link(?MODULE, [Mod, Esme, Opts], []).
 
 %%%-----------------------------------------------------------------------------
 %%% HANDLE PEER FUNCTIONS
