@@ -35,7 +35,7 @@
 -export([congestion/3, connect/1, listen/1]).
 
 %%% SOCKET LISTENER FUNCTIONS EXPORTS
--export([wait_listen/3, wait_recv/3, wait_recv/4, recv_loop/4]).
+-export([wait_accept/3, wait_recv/3, wait_recv/4, recv_loop/4]).
 
 %% TIMER EXPORTS
 -export([cancel_timer/1, start_timer/2]).
@@ -115,6 +115,20 @@ listen(Opts) ->
 %%%-----------------------------------------------------------------------------
 %%% SOCKET LISTENER FUNCTIONS
 %%%-----------------------------------------------------------------------------
+wait_accept(Pid, LSock, Log) ->
+    case gen_tcp:accept(LSock) of
+        {ok, Sock} ->
+            case handle_accept(Pid, Sock) of
+                true ->
+                    wait_recv(Pid, Sock, Log);
+                false ->
+                    ?MODULE:wait_accept(Pid, LSock, Log)
+            end;
+        {error, Reason} ->
+            gen_fsm:send_all_state_event(Pid, {listen_error, Reason})
+    end.
+
+
 handle_accept(Pid, Sock) ->
     ok = gen_tcp:controlling_process(Sock, Pid),
     case inet:peername(Sock) of
@@ -123,6 +137,38 @@ handle_accept(Pid, Sock) ->
             true;
         {error, _Reason} ->  % Most probably the socket is closed
             false
+    end.
+
+
+wait_recv(Pid, Sock, Log) ->
+    ?MODULE:wait_recv(Pid, Sock, <<>>, Log).
+
+wait_recv(Pid, Sock, Buffer, Log) ->
+    Timestamp = now(),
+    case gen_tcp:recv(Sock, 0) of
+        {ok, Input} ->
+            L = timer:now_diff(now(), Timestamp),
+            B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
+            case recv_loop(Pid, Sock, B, Log) of
+                {ok, NewBuffer} ->
+                    ?MODULE:wait_recv(Pid, Sock, NewBuffer, Log);
+                RecvError ->
+                    gen_fsm:send_all_state_event(Pid, RecvError)
+            end;
+        {error, Reason} ->
+            gen_fsm:send_all_state_event(Pid, {sock_error, Reason})
+    end.
+
+
+recv_loop(Pid, Sock, Buffer, Log) ->
+    case gen_tcp:recv(Sock, 0, 0) of
+        {ok, Input} ->                    % Some input waiting already
+            B = handle_input(Pid, concat_binary([Buffer, Input]), 0, 1, Log),
+            ?MODULE:recv_loop(Pid, Sock, B, Log);
+        {error, timeout} ->               % No data inmediately available
+            {ok, Buffer};
+        {error, Reason} ->
+            {sock_error, Reason}
     end.
 
 
@@ -151,51 +197,6 @@ handle_input(Pid, <<CmdLen:32, Rest/binary>> = Buffer, Lapse, N, Log) ->
     end;
 handle_input(_Pid, Buffer, _Lapse, _N, _Log) ->
     Buffer.
-
-
-wait_listen(Pid, LSock, Log) ->
-    case gen_tcp:accept(LSock) of
-        {ok, Sock} ->
-            case handle_accept(Pid, Sock) of
-                true ->
-                    wait_recv(Pid, Sock, Log);
-                false ->
-                    ?MODULE:wait_listen(Pid, LSock, Log)
-            end;
-        {error, Reason} ->
-            gen_fsm:send_all_state_event(Pid, {listen_error, Reason})
-    end.
-
-
-wait_recv(Pid, Sock, Log) ->
-    ?MODULE:wait_recv(Pid, Sock, <<>>, Log).
-
-wait_recv(Pid, Sock, Buffer, Log) ->
-    Timestamp = now(),
-    case gen_tcp:recv(Sock, 0) of
-        {ok, Input} ->
-            L = timer:now_diff(now(), Timestamp),
-            B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
-            case recv_loop(Pid, Sock, B, Log) of
-                {ok, NewBuffer} ->
-                    ?MODULE:wait_recv(Pid, Sock, NewBuffer, Log);
-                RecvError ->
-                    gen_fsm:send_all_state_event(Pid, RecvError)
-            end;
-        {error, Reason} ->
-            gen_fsm:send_all_state_event(Pid, {sock_error, Reason})
-    end.
-
-recv_loop(Pid, Sock, Buffer, Log) ->
-    case gen_tcp:recv(Sock, 0, 0) of
-        {ok, Input} ->                    % Some input waiting already
-            B = handle_input(Pid, concat_binary([Buffer, Input]), 0, 1, Log),
-            ?MODULE:recv_loop(Pid, Sock, B, Log);
-        {error, timeout} ->               % No data inmediately available
-            {ok, Buffer};
-        {error, Reason} ->
-            {sock_error, Reason}
-    end.
 
 %%%-----------------------------------------------------------------------------
 %%% TIMER FUNCTIONS

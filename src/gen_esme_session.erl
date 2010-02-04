@@ -218,7 +218,7 @@ init_open(Mod, Esme, Sock, Tmr, Log) ->
 
 init_listen(Mod, Esme, LSock, Tmr, Log) ->
     Self = self(),
-    Pid = spawn_link(smpp_session, wait_listen, [Self, LSock, Log]),
+    Pid = spawn_link(smpp_session, wait_accept, [Self, LSock, Log]),
     {ok, listen, #st{esme = Esme,
                      mod = Mod,
                      log = Log,
