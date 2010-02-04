@@ -35,7 +35,7 @@
 -export([congestion/3, connect/1, listen/1]).
 
 %%% SOCKET LISTENER FUNCTIONS EXPORTS
--export([wait_accept/3, wait_recv/3, wait_recv/4]).
+-export([wait_accept/3, wait_recv/3, recv_loop/4]).
 
 %% TIMER EXPORTS
 -export([cancel_timer/1, start_timer/2]).
@@ -120,7 +120,7 @@ wait_accept(Pid, LSock, Log) ->
         {ok, Sock} ->
             case handle_accept(Pid, Sock) of
                 true ->
-                    wait_recv(Pid, Sock, Log);
+                    ?MODULE:recv_loop(Pid, Sock, <<>>, Log);
                 false ->
                     gen_tcp:close(Sock),
                     ?MODULE:wait_accept(Pid, LSock, Log)
@@ -130,56 +130,23 @@ wait_accept(Pid, LSock, Log) ->
     end.
 
 
-handle_accept(Pid, Sock) ->
-    ok = gen_tcp:controlling_process(Sock, Pid),
-    case inet:peername(Sock) of
-        {ok, {Addr, _Port}} ->
-            gen_fsm:sync_send_event(Pid, {accept, Sock, Addr});
-        {error, _Reason} ->  % Most probably the socket is closed
-            false
-    end.
-
-
 wait_recv(Pid, Sock, Log) ->
-    ?MODULE:wait_recv(Pid, Sock, <<>>, Log).
+    receive activate -> ?MODULE:recv_loop(Pid, Sock, <<>>, Log) end.
 
-wait_recv(Pid, Sock, Buffer, Log) ->
+
+recv_loop(Pid, Sock, Buffer, Log) ->
     Timestamp = now(),
-    case gen_tcp:recv(Sock, 0) of
-        {ok, Input} ->
+    ok = inet:setopts(Sock, [{active, once}]),
+    receive
+        {tcp, Sock, Input} ->
             L = timer:now_diff(now(), Timestamp),
             B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
-            ?MODULE:wait_recv(Pid, Sock, B, Log);
-        {error, Reason} ->
+            ?MODULE:recv_loop(Pid, Sock, B, Log);
+        {tcp_closed, Sock} ->
+            gen_fsm:send_all_state_event(Pid, {sock_error, closed});
+        {tcp_error, Sock, Reason} ->
             gen_fsm:send_all_state_event(Pid, {sock_error, Reason})
     end.
-
-
-handle_input(Pid, <<CmdLen:32, Rest/binary>> = Buffer, Lapse, N, Log) ->
-    Now = now(), % PDU received.  PDU handling starts now!
-    Len = CmdLen - 4,
-    case Rest of
-        <<PduRest:Len/binary-unit:8, NextPdus/binary>> ->
-            BinPdu = <<CmdLen:32, PduRest/binary>>,
-            case catch smpp_operation:unpack(BinPdu) of
-                {ok, Pdu} ->
-                    smpp_log_mgr:pdu(Log, BinPdu),
-                    CmdId = smpp_operation:get_value(command_id, Pdu),
-                    Event = {input, CmdId, Pdu, (Lapse div N), Now},
-                    gen_fsm:send_all_state_event(Pid, Event);
-                {error, _CmdId, _Status, _SeqNum} = Event ->
-                    gen_fsm:send_all_state_event(Pid, Event);
-                {'EXIT', _What} ->
-                    Event = {error, 0, ?ESME_RUNKNOWNERR, 0},
-                    gen_fsm:send_all_state_event(Pid, Event)
-            end,
-            % The buffer may carry more than one SMPP PDU.
-            handle_input(Pid, NextPdus, Lapse, N + 1, Log);
-        _IncompletePdu ->
-            Buffer
-    end;
-handle_input(_Pid, Buffer, _Lapse, _N, _Log) ->
-    Buffer.
 
 %%%-----------------------------------------------------------------------------
 %%% TIMER FUNCTIONS
@@ -218,3 +185,39 @@ default_addr() ->
     {ok, Host} = inet:gethostname(),
     {ok, Addr} = inet:getaddr(Host, inet),
     Addr.
+
+
+handle_accept(Pid, Sock) ->
+    case inet:peername(Sock) of
+        {ok, {Addr, _Port}} ->
+            gen_fsm:sync_send_event(Pid, {accept, Sock, Addr});
+        {error, _Reason} ->  % Most probably the socket is closed
+            false
+    end.
+
+
+handle_input(Pid, <<CmdLen:32, Rest/binary>> = Buffer, Lapse, N, Log) ->
+    Now = now(), % PDU received.  PDU handling starts now!
+    Len = CmdLen - 4,
+    case Rest of
+        <<PduRest:Len/binary-unit:8, NextPdus/binary>> ->
+            BinPdu = <<CmdLen:32, PduRest/binary>>,
+            case catch smpp_operation:unpack(BinPdu) of
+                {ok, Pdu} ->
+                    smpp_log_mgr:pdu(Log, BinPdu),
+                    CmdId = smpp_operation:get_value(command_id, Pdu),
+                    Event = {input, CmdId, Pdu, (Lapse div N), Now},
+                    gen_fsm:send_all_state_event(Pid, Event);
+                {error, _CmdId, _Status, _SeqNum} = Event ->
+                    gen_fsm:send_all_state_event(Pid, Event);
+                {'EXIT', _What} ->
+                    Event = {error, 0, ?ESME_RUNKNOWNERR, 0},
+                    gen_fsm:send_all_state_event(Pid, Event)
+            end,
+            % The buffer may carry more than one SMPP PDU.
+            handle_input(Pid, NextPdus, Lapse, N + 1, Log);
+        _IncompletePdu ->
+            Buffer
+    end;
+handle_input(_Pid, Buffer, _Lapse, _N, _Log) ->
+    Buffer.

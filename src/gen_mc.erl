@@ -201,15 +201,7 @@ outbind(SrvRef, Addr, Opts, Params) ->
 
 outbind(SrvRef, Addr, Opts, Params, Timeout) ->
     Pid = ref_to_pid(SrvRef),
-    case smpp_session:connect([{addr, Addr} | Opts]) of
-        {ok, Sock} ->
-            ok = gen_tcp:controlling_process(Sock, Pid),
-            Timers = proplists:get_value(timers, Opts, ?DEFAULT_TIMERS_SMPP),
-            OutbindOpts = [{sock, Sock}, {timers, Timers}],
-            gen_server:call(Pid, {outbind, OutbindOpts, Params}, Timeout);
-        Error ->
-            Error
-    end.
+    gen_server:call(Pid, {outbind, [{addr, Addr} | Opts], Params}, Timeout).
 
 
 unbind(SrvRef, Session, Args) ->

@@ -206,15 +206,7 @@ listen(SrvRef, Opts) ->
 
 open(SrvRef, Addr, Opts) ->
     Pid = ref_to_pid(SrvRef),
-    case smpp_session:connect([{addr, Addr} | Opts]) of
-        {ok, Sock} ->
-            ok = gen_tcp:controlling_process(Sock, Pid),
-            Timers = proplists:get_value(timers, Opts, ?DEFAULT_TIMERS_SMPP),
-            OpenOpts = [{sock, Sock}, {timers, Timers}],
-            gen_server:call(Pid, {start_session, OpenOpts}, ?ASSERT_TIME);
-        Error ->
-            Error
-    end.
+    gen_server:call(Pid, {start_session, [{addr, Addr} | Opts]}, ?ASSERT_TIME).
 
 
 close(SrvRef) ->

@@ -162,6 +162,8 @@ init_open(Mod, Mc, Opts, Tmr, Log) ->
         {ok, Sock} ->
             Self = self(),
             Pid = spawn_link(smpp_session, wait_recv, [Self, Sock, Log]),
+            ok = gen_tcp:controlling_process(Sock, Pid),
+            Pid ! activate,
             {ok, open, #st{mc = Mc,
                            mod = Mod,
                            log = Log,
