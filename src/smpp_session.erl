@@ -32,7 +32,7 @@
 -include_lib("oserl/include/oserl.hrl").
 
 %%% EXTERNAL EXPORTS
--export([congestion/3, connect/1, listen/1]).
+-export([congestion/3, connect/1, listen/1, tcp_send/2]).
 
 %%% SOCKET LISTENER FUNCTIONS EXPORTS
 -export([wait_accept/3, wait_recv/3, recv_loop/4]).
@@ -110,6 +110,14 @@ listen(Opts) ->
                 Error ->
                     Error
             end
+    end.
+
+
+tcp_send(Sock, Data) when is_port(Sock) ->
+    try erlang:port_command(Sock, Data) of
+        true -> ok
+    catch
+        error:_Error -> {error, einval}
     end.
 
 %%%-----------------------------------------------------------------------------

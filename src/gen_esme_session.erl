@@ -498,6 +498,11 @@ handle_event({listen_error, Reason}, _Stn, Std) ->
 
 handle_info({'DOWN', _Ref, _Type, _Esme, Reason}, _Stn, Std) ->
     {stop, Reason, Std};
+handle_info({inet_reply, _, ok}, Stn, Std) ->
+    {next_state, Stn, Std};
+handle_info({inet_reply, _, Reason}, Stn, Std) ->
+    gen_fsm:send_all_state_event(self(), {sock_error, Reason}),
+    {next_state, Stn, Std};
 handle_info(_Info, Stn, Std) ->
     {next_state, Stn, Std}.
 
@@ -582,7 +587,7 @@ handle_timeout(inactivity_timer, _St) ->
 send_pdu(Sock, Pdu, Log) ->
     case smpp_operation:pack(Pdu) of
         {ok, BinPdu} ->
-            case gen_tcp:send(Sock, BinPdu) of
+            case smpp_session:tcp_send(Sock, BinPdu) of
                 ok ->
                     ok = smpp_log_mgr:pdu(Log, BinPdu);
                 {error, Reason} ->
