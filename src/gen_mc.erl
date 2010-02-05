@@ -201,6 +201,10 @@ outbind(SrvRef, Addr, Opts, Params) ->
 
 outbind(SrvRef, Addr, Opts, Params, Timeout) ->
     Pid = ref_to_pid(SrvRef),
+    case proplists:get_value(sock, Opts) of
+        undefined -> ok;
+        Sock      -> ok = gen_tcp:controlling_process(Sock, Pid)
+    end,
     gen_server:call(Pid, {outbind, [{addr, Addr} | Opts], Params}, Timeout).
 
 

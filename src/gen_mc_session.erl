@@ -108,7 +108,10 @@ behaviour_info(_Other) ->
 %%%-----------------------------------------------------------------------------
 start_link(Mod, Opts) ->
     Mc = proplists:get_value(mc, Opts, self()),
-    gen_fsm:start_link(?MODULE, [Mod, Mc, Opts], []).
+    case proplists:get_value(lsock, Opts) of
+        undefined -> start_connect(Mod, Mc, Opts);
+        _LSock    -> start_listen(Mod, Mc, Opts)
+    end.
 
 stop(FsmRef) ->
     stop(FsmRef, normal).
@@ -152,30 +155,27 @@ init([Mod, Mc, Opts]) ->
     Log = proplists:get_value(log, Opts),
     case proplists:get_value(lsock, Opts) of
         undefined ->
-            init_open(Mod, Mc, Opts, Timers, Log);
+            init_open(Mod, Mc, proplists:get_value(sock, Opts), Timers, Log);
         LSock ->
             init_listen(Mod, Mc, LSock, Timers, Log)
     end.
 
-init_open(Mod, Mc, Opts, Tmr, Log) ->
-    case smpp_session:connect(Opts) of
-        {ok, Sock} ->
-            Self = self(),
-            Pid = spawn_link(smpp_session, wait_recv, [Self, Sock, Log]),
-            ok = gen_tcp:controlling_process(Sock, Pid),
-            Pid ! activate,
-            {ok, open, #st{mc = Mc,
-                           mod = Mod,
-                           log = Log,
-                           sock = Sock,
-                           sock_ctrl = Pid,
-                           req_tab = smpp_req_tab:new(),
-                           timers = Tmr,
-                           session_init_timer = smpp_session:start_timer(Tmr, session_init_timer),
-                           enquire_link_timer = smpp_session:start_timer(Tmr, enquire_link_timer)}};
-        ConnError ->
-            ConnError
-    end.
+
+init_open(Mod, Mc, Sock, Tmr, Log) ->
+    Self = self(),
+    Pid = spawn_link(smpp_session, wait_recv, [Self, Sock, Log]),
+    {ok, open, #st{mc = Mc,
+                   mod = Mod,
+                   log = Log,
+                   sock = Sock,
+                   sock_ctrl = Pid,
+                   req_tab = smpp_req_tab:new(),
+                   timers = Tmr,
+                   session_init_timer =
+                       smpp_session:start_timer(Tmr, session_init_timer),
+                   enquire_link_timer =
+                       smpp_session:start_timer(Tmr, enquire_link_timer)}}.
+
 
 init_listen(Mod, Mc, LSock, Tmr, Log) ->
     Self = self(),
@@ -311,6 +311,10 @@ listen({accept, Sock, Addr}, _From, St) ->
     end.
 
 
+open(activate, St) ->
+    ok = gen_tcp:controlling_process(St#st.sock, St#st.sock_ctrl),
+    St#st.sock_ctrl ! activate,
+    {next_state, open, St};
 open({CmdId, _Pdu} = R, St)
   when CmdId == ?COMMAND_ID_BIND_RECEIVER;
        CmdId == ?COMMAND_ID_BIND_TRANSMITTER;
@@ -517,6 +521,34 @@ handle_sync_event({CmdId, Params}, From, Stn, Std) ->
 %%%-----------------------------------------------------------------------------
 code_change(_OldVsn, Stn, Std, _Extra) ->
     {ok, Stn, Std}.
+
+%%%-----------------------------------------------------------------------------
+%%% START FUNCTIONS
+%%%-----------------------------------------------------------------------------
+start_connect(Mod, Mc, Opts) ->
+    case smpp_session:connect(Opts) of
+        {ok, Sock} ->
+            Args = [Mod, Mc, [{sock, Sock} | Opts]],
+            case gen_fsm:start_link(?MODULE, Args, []) of
+                {ok, Pid} ->
+                    case gen_tcp:controlling_process(Sock, Pid) of
+                        ok ->
+                            gen_fsm:send_event(Pid, activate),
+                            {ok, Pid};
+                        CtrlError ->
+                            gen_tcp:close(Sock),
+                            CtrlError
+                        end;
+                SessionError ->
+                    gen_tcp:close(Sock),
+                    SessionError
+                end;
+            ConnError ->
+                ConnError
+    end.
+
+start_listen(Mod, Mc, Opts) ->
+    gen_fsm:start_link(?MODULE, [Mod, Mc, Opts], []).
 
 %%%-----------------------------------------------------------------------------
 %%% HANDLE PEER FUNCTIONS

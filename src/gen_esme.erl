@@ -206,6 +206,10 @@ listen(SrvRef, Opts) ->
 
 open(SrvRef, Addr, Opts) ->
     Pid = ref_to_pid(SrvRef),
+    case proplists:get_value(sock, Opts) of
+        undefined -> ok;
+        Sock      -> ok = gen_tcp:controlling_process(Sock, Pid)
+    end,
     gen_server:call(Pid, {start_session, [{addr, Addr} | Opts]}, ?ASSERT_TIME).
 
 
