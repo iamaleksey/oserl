@@ -188,8 +188,8 @@ performance_test(SrcAddr, ShortMsg, Times) ->
               {priority_flag, ?PRIORITY_FLAG_GSM_CBS_NORMAL},
               {short_message, ShortMsg}],
     {ok, Req} = operation:pack(operation:new(16#00000005, 2, Params)),
-    {ok, _PduReq} = operation:unpack(concat_binary(Req)),
+    {ok, _PduReq} = operation:unpack(list_to_binary(Req)),
     ParamsResp = [{message_id, "12345"}],
     {ok, Resp} = operation:pack(operation:new(16#80000005, 0, 3, ParamsResp)),
-    {ok, _PduResp} = operation:unpack(concat_binary(Resp)),
+    {ok, _PduResp} = operation:unpack(list_to_binary(Resp)),
     performance_test(SrcAddr, ShortMsg, Times - 1).

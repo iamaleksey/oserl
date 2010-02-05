@@ -285,7 +285,7 @@ encode_iter(Values, Type) ->
     encode_iter(Values, Type, []).
 
 encode_iter([], _Type, Acc) ->
-    {ok, concat_binary(lists:reverse(Acc))};
+    {ok, list_to_binary(lists:reverse(Acc))};
 encode_iter([Value|Values], Type, Acc) ->
     case encode(Value, Type) of
         {ok, Binary} ->
@@ -302,7 +302,7 @@ encode_list(Values, Types) ->
     encode_list(Values, Types, []).
 
 encode_list([], _Types, Acc) ->
-    {ok, concat_binary(lists:reverse(Acc))};
+    {ok, list_to_binary(lists:reverse(Acc))};
 encode_list([Value|Values], [Type|Types], Acc) ->
     case encode(Value, Type) of
         {ok, Binary} ->

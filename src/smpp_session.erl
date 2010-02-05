@@ -147,7 +147,7 @@ recv_loop(Pid, Sock, Buffer, Log) ->
     receive
         {tcp, Sock, Input} ->
             L = timer:now_diff(now(), Timestamp),
-            B = handle_input(Pid, concat_binary([Buffer, Input]), L, 1, Log),
+            B = handle_input(Pid, list_to_binary([Buffer, Input]), L, 1, Log),
             ?MODULE:recv_loop(Pid, Sock, B, Log);
         {tcp_closed, Sock} ->
             gen_fsm:send_all_state_event(Pid, {sock_error, closed});
