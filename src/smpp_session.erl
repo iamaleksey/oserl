@@ -41,18 +41,18 @@
 -export([cancel_timer/1, start_timer/2]).
 
 %%% MACROS
--define(CONNECT_OPTS, [binary, {packet, 0}, {active, false}]).
+-define(CONNECT_OPTS(Ip),
+        case Ip of
+            undefined -> [binary, {packet, 0}, {active, false}];
+            _         -> [binary, {packet, 0}, {active, false}, {ip, Ip}]
+        end).
 -define(CONNECT_TIME, 30000).
--define(LISTEN_OPTS(Addr),
-        if
-            Addr == undefined ->
-                [binary, {packet, 0}, {active, false}, {reuseaddr, true}];
-            true ->
-                [binary,
-                 {packet, 0},
-                 {active, false},
-                 {reuseaddr, true},
-                 {ip, Addr}]
+-define(LISTEN_OPTS(Ip),
+        case Ip of
+            undefined ->
+              [binary, {packet, 0}, {active, false}, {reuseaddr, true}];
+            _ ->
+              [binary, {packet, 0}, {active, false}, {reuseaddr, true}, {ip, Ip}]
         end).
 
 %%%-----------------------------------------------------------------------------
@@ -81,17 +81,16 @@ congestion(CongestionSt, WaitTime, Timestamp) ->
 
 
 connect(Opts) ->
+    Ip = proplists:get_value(ip, Opts),
     case proplists:get_value(sock, Opts, undefined) of
         undefined ->
             Addr = proplists:get_value(addr, Opts),
             Port = proplists:get_value(port, Opts, ?DEFAULT_SMPP_PORT),
-            gen_tcp:connect(Addr, Port, ?CONNECT_OPTS, ?CONNECT_TIME);
+            gen_tcp:connect(Addr, Port, ?CONNECT_OPTS(Ip), ?CONNECT_TIME);
         Sock ->
-            case inet:setopts(Sock, ?CONNECT_OPTS) of
-                ok ->
-                    {ok, Sock};
-                Error ->
-                    Error
+            case inet:setopts(Sock, ?CONNECT_OPTS(Ip)) of
+                ok    -> {ok, Sock};
+                Error -> Error
             end
     end.
 

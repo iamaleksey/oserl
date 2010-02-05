@@ -105,6 +105,7 @@ Start/Stop functions.
  : EsmeRef = pid() | atom()
  : Addr = ip_address()
  : Port = int()
+ : Ip = ip_address()
  : LSock = socket()
  : Timers = timers_smpp()
  : Log = pid()
