@@ -143,7 +143,7 @@ wait_recv(Pid, Sock, Log) ->
 
 recv_loop(Pid, Sock, Buffer, Log) ->
     Timestamp = now(),
-    ok = inet:setopts(Sock, [{active, once}]),
+    inet:setopts(Sock, [{active, once}]),
     receive
         {tcp, Sock, Input} ->
             L = timer:now_diff(now(), Timestamp),
