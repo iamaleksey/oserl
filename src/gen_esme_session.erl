@@ -39,7 +39,8 @@
 -export([start_link/2, stop/1, stop/2]).
 
 %%% SMPP EXPORTS
--export([bind_receiver/2,
+-export([reply/2,
+         bind_receiver/2,
          bind_transmitter/2,
          bind_transceiver/2,
          broadcast_sm/2,
@@ -80,6 +81,7 @@
          sock,
          sock_ctrl,
          req_tab,
+         op_tab,
          congestion_state = 0,
          timers,
          session_init_timer,
@@ -121,6 +123,11 @@ stop(FsmRef, Reason) ->
 %%%-----------------------------------------------------------------------------
 %%% SMPP EXPORTS
 %%%-----------------------------------------------------------------------------
+reply(FsmRef, {SeqNum, Reply}) ->
+    Event = {reply, {SeqNum, Reply}},
+    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+
+
 bind_receiver(FsmRef, Params) ->
     Event = {?COMMAND_ID_BIND_RECEIVER, Params},
     gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
@@ -209,6 +216,7 @@ init_open(Mod, Esme, Sock, Tmr, Log) ->
                    sock = Sock,
                    sock_ctrl = Pid,
                    req_tab = smpp_req_tab:new(),
+                   op_tab = smpp_req_tab:new(),
                    timers = Tmr,
                    session_init_timer =
                        smpp_session:start_timer(Tmr, session_init_timer),
@@ -224,6 +232,7 @@ init_listen(Mod, Esme, LSock, Tmr, Log) ->
                      log = Log,
                      sock_ctrl = Pid,
                      req_tab = smpp_req_tab:new(),
+                     op_tab = smpp_req_tab:new(),
                      timers = Tmr}}.
 
 
@@ -509,6 +518,20 @@ handle_info(_Info, Stn, Std) ->
 
 handle_sync_event({stop, Reason}, _From, _Stn, Std) ->
     {stop, Reason, ok, Std};
+handle_sync_event({reply, {SeqNum, Reply}}, _From, Stn, Std) ->
+    {ok, {SeqNum, CmdId}} = smpp_req_tab:read(Std#st.op_tab, SeqNum),
+    RespId = ?RESPONSE(CmdId),
+    Sock = Std#st.sock,
+    Log = Std#st.log,
+    case Reply of
+        {ok, PList1} ->
+            PList2  = [{congestion_state, Std#st.congestion_state}],
+            Params = smpp_operation:merge(PList1, PList2),
+            send_response(RespId, ?ESME_ROK, SeqNum, Params, Sock, Log);
+        {error, Error} ->
+            send_response(RespId, Error, SeqNum, [], Sock, Log)
+    end,
+    {reply, ok, Stn, Std};
 handle_sync_event({CmdId, Params}, From, Stn, Std) ->
     NewStd = send_request(CmdId, Params, From, Std),
     {next_state, Stn, NewStd}.
@@ -561,6 +584,9 @@ handle_peer_operation({CmdId, Pdu}, St) ->
     Sock = St#st.sock,
     Log = St#st.log,
     case (St#st.mod):handle_operation(St#st.esme, {CmdName, Pdu}) of
+        noreply ->
+            ok = smpp_req_tab:write(St#st.op_tab, {SeqNum, CmdId}),
+            true;
         {ok, PList1} ->
             PList2  = [{congestion_state, St#st.congestion_state}],
             Params = smpp_operation:merge(PList1, PList2),
