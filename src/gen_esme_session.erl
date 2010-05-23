@@ -638,25 +638,10 @@ handle_timeout(inactivity_timer, _St) ->
 %%%-----------------------------------------------------------------------------
 %%% SEND PDU FUNCTIONS
 %%%-----------------------------------------------------------------------------
-send_pdu(Sock, Pdu, Log) ->
-    case smpp_operation:pack(Pdu) of
-        {ok, BinPdu} ->
-            case smpp_session:tcp_send(Sock, BinPdu) of
-                ok ->
-                    ok = smpp_log_mgr:pdu(Log, BinPdu);
-                {error, Reason} ->
-                    gen_fsm:send_all_state_event(self(), {sock_error, Reason})
-            end;
-        {error, _CmdId, Status, _SeqNum} ->
-            gen_tcp:close(Sock),
-            exit({command_status, Status})
-    end.
-
-
 send_enquire_link(St) ->
     SeqNum = ?INCR_SEQUENCE_NUMBER(St#st.sequence_number),
     Pdu = smpp_operation:new(?COMMAND_ID_ENQUIRE_LINK, SeqNum, []),
-    ok = send_pdu(St#st.sock, Pdu, St#st.log),
+    ok = smpp_session:send_pdu(St#st.sock, Pdu, St#st.log),
     ETimer = smpp_session:start_timer(St#st.timers, enquire_link_timer),
     RTimer = smpp_session:start_timer(St#st.timers, enquire_link_failure),
     St#st{sequence_number = SeqNum,
@@ -666,19 +651,26 @@ send_enquire_link(St) ->
 
 
 send_request(CmdId, Params, From, St) ->
-    smpp_session:cancel_timer(St#st.inactivity_timer),
-    smpp_session:cancel_timer(St#st.enquire_link_timer),
+    Ref = make_ref(),
+    gen_fsm:reply(From, Ref),
     SeqNum = ?INCR_SEQUENCE_NUMBER(St#st.sequence_number),
     Pdu = smpp_operation:new(CmdId, SeqNum, Params),
-    ok = send_pdu(St#st.sock, Pdu, St#st.log),
-    RTimer = smpp_session:start_timer(St#st.timers, {response_timer, SeqNum}),
-    Ref = make_ref(),
-    ok = smpp_req_tab:write(St#st.req_tab, {SeqNum, CmdId, RTimer, Ref}),
-    gen_fsm:reply(From, Ref),
-    St#st{sequence_number = SeqNum,
-          enquire_link_timer = smpp_session:start_timer(St#st.timers, enquire_link_timer),
-          inactivity_timer = smpp_session:start_timer(St#st.timers, inactivity_timer)}.
+    case smpp_operation:pack(Pdu) of
+        {ok, BinPdu} ->
+            smpp_session:cancel_timer(St#st.inactivity_timer),
+            smpp_session:cancel_timer(St#st.enquire_link_timer),
+            ok = smpp_session:send_pdu(St#st.sock, BinPdu, St#st.log),
+            RTimer = smpp_session:start_timer(St#st.timers, {response_timer, SeqNum}),
+            ok = smpp_req_tab:write(St#st.req_tab, {SeqNum, CmdId, RTimer, Ref}),
+            St#st{sequence_number = SeqNum,
+                  enquire_link_timer = smpp_session:start_timer(St#st.timers, enquire_link_timer),
+                  inactivity_timer = smpp_session:start_timer(St#st.timers, inactivity_timer)};
+        {error, _CmdId, Status, _SeqNum} ->
+            handle_peer_resp({error, {command_status, Status}}, Ref, St),
+            St
+    end.
 
 
 send_response(CmdId, Status, SeqNum, Params, Sock, Log) ->
-    send_pdu(Sock, smpp_operation:new(CmdId, Status, SeqNum, Params), Log).
+    Pdu = smpp_operation:new(CmdId, Status, SeqNum, Params),
+    smpp_session:send_pdu(Sock, Pdu, Log).

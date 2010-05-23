@@ -32,7 +32,7 @@
 -include_lib("oserl/include/oserl.hrl").
 
 %%% EXTERNAL EXPORTS
--export([congestion/3, connect/1, listen/1, tcp_send/2]).
+-export([congestion/3, connect/1, listen/1, tcp_send/2, send_pdu/3]).
 
 %%% SOCKET LISTENER FUNCTIONS EXPORTS
 -export([wait_accept/3, wait_recv/3, recv_loop/4]).
@@ -117,6 +117,25 @@ tcp_send(Sock, Data) when is_port(Sock) ->
         true -> ok
     catch
         error:_Error -> {error, einval}
+    end.
+
+
+send_pdu(Sock, BinPdu, Log) when is_list(BinPdu) ->
+    case tcp_send(Sock, BinPdu) of
+        ok ->
+            ok = smpp_log_mgr:pdu(Log, BinPdu);
+        {error, Reason} ->
+            gen_fsm:send_all_state_event(self(), {sock_error, Reason})
+    end;
+
+
+send_pdu(Sock, Pdu, Log) ->
+    case smpp_operation:pack(Pdu) of
+        {ok, BinPdu} ->
+            send_pdu(Sock, BinPdu, Log);
+        {error, _CmdId, Status, _SeqNum} ->
+            gen_tcp:close(Sock),
+            exit({command_status, Status})
     end.
 
 %%%-----------------------------------------------------------------------------
