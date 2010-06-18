@@ -19,10 +19,11 @@ VPATH = src:include:ebin:doc
 ###-----------------------------------------------------------------------------
 ### TARGETS
 ###-----------------------------------------------------------------------------
-all: compile
-
 compile:
 	./rebar compile
+
+deps:
+	./rebar get-deps
 
 clean:
 	./rebar clean
@@ -35,6 +36,8 @@ clobber: clean
 dialyze:
 	./rebar analyze
 
+doc: man html pdf
+
 man: $(MANS)
 	@$(MV) doc/man/$(APPNAME)_overview.3 doc/man/$(APPNAME).1
 
@@ -42,8 +45,6 @@ html: $(HTMS)
 	@$(MV) doc/html/$(APPNAME)_overview.html doc/html/index.html
 
 pdf: $(PDFS)
-
-doc: man html pdf
 
 ## Rules
 %.3: %.ndoc
