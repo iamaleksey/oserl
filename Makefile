@@ -13,7 +13,7 @@ PDFS = $(DOCS:.ndoc=.pdf)
 ### Dependecy Search Paths
 VPATH = src:include:ebin:doc
 
-.PHONY: all clean clobber doc
+.PHONY: compile clean clobber doc
 .SUFFIXES: .erl .hrl .beam .app.src .app .rel .ndoc
 
 ###-----------------------------------------------------------------------------
