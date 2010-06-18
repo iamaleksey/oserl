@@ -29,7 +29,7 @@
 -module(log_SUITE).
 
 %%% INCLUDE FILES
--include("ct.hrl").
+-include_lib("common_test/include/ct.hrl").
 
 %%% EXTERNAL EXPORTS
 -compile(export_all).

@@ -8,6 +8,7 @@ RUN_TEST = run_test
 ECHO = echo
 SED = sed
 RM = rm -vf
+CP = cp -vf
 MV = mv -vf
 
 TOP_DIR = ..
@@ -34,8 +35,8 @@ VPATH = conf:stubs
 all: $(STUB_BEAMS) $(CONF) $(SPEC) test
 
 test:
-	cd $(TOP_DIR); $(MAKE) clean; $(MAKE) DEBUG_INFO='true'
-	$(MV) ../ebin/*.beam .
+	cd $(TOP_DIR); $(MAKE)
+	$(CP) ../ebin/*.beam .
 	$(RUN_TEST) -dir . -spec ./conf/test.spec -cover ./conf/cover.conf
 
 clean:

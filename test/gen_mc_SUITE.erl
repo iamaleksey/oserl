@@ -29,7 +29,7 @@
 -module(gen_mc_SUITE).
 
 %%% INCLUDE FILES
--include("ct.hrl").
+-include_lib("common_test/include/ct.hrl").
 -include_lib("oserl/include/smpp_globals.hrl").
 -include_lib("oserl/include/oserl.hrl").
 
