@@ -92,10 +92,10 @@ ie(Iei, [Udhl|T]) ->
     ie(Iei, T, Udhl).
 
 ie(Iei, [Iei, Iedl|_] = Data, _Len) ->
-    lists:sublist(Data, Iedl + 1);
+    lists:sublist(Data, Iedl + 2);
 ie(Iei, [_Other, Iedl|_] = Data, Len) ->
-    NewLen = Len - Iedl - 1,
-    ie(Iei, lists:sublist(Data, Iedl + 1,  NewLen), NewLen).
+    NewLen = Len - Iedl - 2,
+    ie(Iei, lists:sublist(Data, Iedl + 3, NewLen), NewLen).
 
 
 join_user_data(Segments) ->
