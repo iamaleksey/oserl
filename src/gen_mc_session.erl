@@ -197,9 +197,8 @@ init_listen(Mod, Mc, LSock, Tmr, Log) ->
                      timers = Tmr}}.
 
 
-terminate(Reason, _Stn, Std) ->
-    unlink(Std#st.sock_ctrl),
-    exit(Std#st.sock_ctrl, Reason),
+terminate(_Reason, _Stn, Std) ->
+    exit(Std#st.sock_ctrl, kill),
     if Std#st.sock == undefined -> ok; true -> gen_tcp:close(Std#st.sock) end.
 
 %%%-----------------------------------------------------------------------------
