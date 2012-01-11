@@ -236,7 +236,7 @@ init_listen(Mod, Esme, LSock, Tmr, Log) ->
                      timers = Tmr}}.
 
 
-terminate(Reason, _Stn, Std) ->
+terminate(_Reason, _Stn, Std) ->
     exit(Std#st.sock_ctrl, kill),
     if Std#st.sock == undefined -> ok; true -> gen_tcp:close(Std#st.sock) end.
 

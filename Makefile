@@ -19,6 +19,8 @@ VPATH = src:include:ebin:doc
 ###-----------------------------------------------------------------------------
 ### TARGETS
 ###-----------------------------------------------------------------------------
+all: deps compile
+
 compile:
 	./rebar compile
 
@@ -32,9 +34,6 @@ clobber: clean
 	@$(RM) -R doc/html
 	@$(RM) -R doc/man
 	@$(RM) -R doc/pdf
-
-dialyze:
-	./rebar analyze
 
 doc: man html pdf
 
