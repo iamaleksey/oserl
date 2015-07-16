@@ -201,7 +201,7 @@ success() ->
 %%% INIT/TERMINATE EXPORTS
 %%%-----------------------------------------------------------------------------
 init([Silent]) ->
-    {A1, A2, A3} = now(),
+    {A1, A2, A3} = erlang:timestamp(),
     random:seed(A1, A2, A3),
     {ok, #st{silent = Silent}}.
 
