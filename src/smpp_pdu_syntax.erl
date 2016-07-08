@@ -76,8 +76,16 @@ pack({CmdId, 0, SeqNum, Body}, PduType) ->
         {error, Status} ->
             {error, CmdId, Status, SeqNum}
     end;
-pack({CmdId, Status, SeqNum, _Body}, _PduType) ->
-    {ok, [<<16:32, CmdId:32, Status:32, SeqNum:32>>]}.
+pack({CmdId, Status, SeqNum, Body}, PduType) ->
+    % In case of error, pack the standard types when possible
+    case pack_stds(Body, PduType#pdu.std_types) of
+        {ok, Stds, _BodyTlvs} ->
+            BodyBin = list_to_binary([Stds]),
+            Len = size(BodyBin) + 16,
+            {ok, [<<Len:32, CmdId:32, Status:32, SeqNum:32>>, BodyBin]};
+        _ ->
+            {ok, [<<16:32, CmdId:32, Status:32, SeqNum:32>>]}
+    end.
 
 
 unpack(<<Len:32, CmdId:32, ?ESME_ROK:32, SeqNum:32, Body/binary>>, PduType)
