@@ -60,7 +60,7 @@ suite() ->
 %%%-----------------------------------------------------------------------------
 init_per_suite(Conf) ->
     lists:foreach(fun(X) -> code:add_path(X) end, ct:get_config(paths, [])),
-    {A1, A2, A3} = now(),
+    {A1, A2, A3} = erlang:timestamp(),
     random:seed(A1, A2, A3),
     dbg:tracer(),
     dbg:p(all, [c, sos, sol]),

@@ -19,8 +19,8 @@ This module implements the ``gen_event`` behaviour.
 = DESCRIPTION =
 
 The ``disk_log_hlr`` stores SMPP PDUs on disk in tuples with the format
-``{Now, Format(Pdu)}``. ``Now`` is the timestamp as returned by the
-BIF ``now()``. ``Pdu`` is the SMPP PDU in binary format and ``Format`` is the
+``{Timestamp, Format(Pdu)}``. ``Now`` is the timestamp as returned by the
+BIF ``erlang:timestamp()``. ``Pdu`` is the SMPP PDU in binary format and ``Format`` is the
 formatting fun.
 
 The format of the term stored by the disk log can be redefined using a custom
