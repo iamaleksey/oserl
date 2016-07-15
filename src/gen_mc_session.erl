@@ -133,25 +133,27 @@ alert_notification(FsmRef, Params) ->
     Event = {?COMMAND_ID_ALERT_NOTIFICATION, Params},
     gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
 
+send_event(FsmRef, CmdId, Params) ->
+    Ref = make_ref(),
+    Event = {outpdu, CmdId, Params, Ref},
+    gen_fsm:send_all_state_event(FsmRef, Event),
+    Ref.
 
 data_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_DATA_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_DATA_SM, Params).
 
 
 deliver_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_DELIVER_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_DELIVER_SM, Params).
+
+
+unbind(FsmRef) ->
+    send_event(FsmRef, ?COMMAND_ID_UNBIND, []).
 
 
 outbind(FsmRef, Params) ->
     Event = {?COMMAND_ID_OUTBIND, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
-
-
-unbind(FsmRef) ->
-    Event = {?COMMAND_ID_UNBIND, []},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    gen_fsm:sync_send_all_state_event(FsmRef, Event).
 
 %%%-----------------------------------------------------------------------------
 %%% INIT/TERMINATE EXPORTS
@@ -501,7 +503,10 @@ handle_event({sock_error, Reason}, _Stn, Std) ->
     (Std#st.mod):handle_closed(Std#st.mc, Reason),
     {stop, normal, Std#st{sock = undefined}};
 handle_event({listen_error, Reason}, _Stn, Std) ->
-    {stop, Reason, Std}.
+    {stop, Reason, Std};
+handle_event({outpdu, CmdId, Params, Ref}, Stn, Std) ->
+    NewStd = send_request(CmdId, Params, Ref, Std),
+    {next_state, Stn, NewStd}.
 
 
 handle_info({'DOWN', _Ref, _Type, _Mc, Reason}, _Stn, Std) ->
@@ -533,10 +538,7 @@ handle_sync_event({reply, {SeqNum, Reply}}, _From, Stn, Std) ->
     {reply, ok, Stn, Std};
 handle_sync_event({?COMMAND_ID_OUTBIND, Params}, From, open, Std) ->
     NewStd = send_request(?COMMAND_ID_OUTBIND, Params, From, Std),
-    {next_state, outbound, NewStd};
-handle_sync_event({CmdId, Params}, From, Stn, Std) ->
-    NewStd = send_request(CmdId, Params, From, Std),
-    {next_state, Stn, NewStd}.
+    {next_state, outbound, NewStd}.
 
 %%%-----------------------------------------------------------------------------
 %%% CODE UPDATE EXPORTS
@@ -674,9 +676,7 @@ send_request(CmdId, Params, From, St)
           inactivity_timer = smpp_session:start_timer(St#st.timers, inactivity_timer)};
 
 
-send_request(CmdId, Params, From, St) ->
-    Ref = make_ref(),
-    gen_fsm:reply(From, Ref),
+send_request(CmdId, Params, Ref, St) ->
     SeqNum = ?INCR_SEQUENCE_NUMBER(St#st.sequence_number),
     Pdu = smpp_operation:new(CmdId, SeqNum, Params),
     case smpp_operation:pack(Pdu) of

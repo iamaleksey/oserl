@@ -128,69 +128,64 @@ reply(FsmRef, {SeqNum, Reply}) ->
     gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
 
 
+send_event(FsmRef, CmdId, Params) ->
+    Ref = make_ref(),
+    Event = {outpdu, CmdId, Params, Ref},
+    gen_fsm:send_all_state_event(FsmRef, Event),
+    Ref.
+
+
 bind_receiver(FsmRef, Params) ->
-    Event = {?COMMAND_ID_BIND_RECEIVER, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_BIND_RECEIVER, Params).
 
 
 bind_transmitter(FsmRef, Params) ->
-    Event = {?COMMAND_ID_BIND_TRANSMITTER, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_BIND_TRANSMITTER, Params).
 
 
 bind_transceiver(FsmRef, Params) ->
-    Event = {?COMMAND_ID_BIND_TRANSCEIVER, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_BIND_TRANSCEIVER, Params).
 
 
 broadcast_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_BROADCAST_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_BROADCAST_SM, Params).
 
 
 cancel_broadcast_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_CANCEL_BROADCAST_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_CANCEL_BROADCAST_SM, Params).
 
 
 cancel_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_CANCEL_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_CANCEL_SM, Params).
 
 
 data_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_DATA_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_DATA_SM, Params).
 
 
 query_broadcast_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_QUERY_BROADCAST_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_QUERY_BROADCAST_SM, Params).
 
 
 query_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_QUERY_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_QUERY_SM, Params).
 
 
 replace_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_REPLACE_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_REPLACE_SM, Params).
 
 
 submit_multi(FsmRef, Params) ->
-    Event = {?COMMAND_ID_SUBMIT_MULTI, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_SUBMIT_MULTI, Params).
 
 
 submit_sm(FsmRef, Params) ->
-    Event = {?COMMAND_ID_SUBMIT_SM, Params},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_SUBMIT_SM, Params).
 
 
 unbind(FsmRef) ->
-    Event = {?COMMAND_ID_UNBIND, []},
-    gen_fsm:sync_send_all_state_event(FsmRef, Event, ?ASSERT_TIME).
+    send_event(FsmRef, ?COMMAND_ID_UNBIND, []).
+
 
 %%%-----------------------------------------------------------------------------
 %%% INIT/TERMINATE EXPORTS
@@ -501,7 +496,10 @@ handle_event({sock_error, Reason}, _Stn, Std) ->
     (Std#st.mod):handle_closed(Std#st.esme, Reason),
     {stop, normal, Std#st{sock = undefined}};
 handle_event({listen_error, Reason}, _Stn, Std) ->
-    {stop, Reason, Std}.
+    {stop, Reason, Std};
+handle_event({outpdu, CmdId, Params, Ref}, Stn, Std) ->
+    NewStd = send_request(CmdId, Params, Ref, Std),
+    {next_state, Stn, NewStd}.
 
 
 handle_info({'DOWN', _Ref, _Type, _Esme, Reason}, _Stn, Std) ->
@@ -530,10 +528,7 @@ handle_sync_event({reply, {SeqNum, Reply}}, _From, Stn, Std) ->
         {error, Error} ->
             send_response(RespId, Error, SeqNum, [], Sock, Log)
     end,
-    {reply, ok, Stn, Std};
-handle_sync_event({CmdId, Params}, From, Stn, Std) ->
-    NewStd = send_request(CmdId, Params, From, Std),
-    {next_state, Stn, NewStd}.
+    {reply, ok, Stn, Std}.
 
 %%%-----------------------------------------------------------------------------
 %%% CODE UPDATE EXPORTS
@@ -649,9 +644,7 @@ send_enquire_link(St) ->
           congestion_state = 0}.
 
 
-send_request(CmdId, Params, From, St) ->
-    Ref = make_ref(),
-    gen_fsm:reply(From, Ref),
+send_request(CmdId, Params, Ref, St) ->
     SeqNum = ?INCR_SEQUENCE_NUMBER(St#st.sequence_number),
     Pdu = smpp_operation:new(CmdId, SeqNum, Params),
     case smpp_operation:pack(Pdu) of
